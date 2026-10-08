@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <UserSecretsId>903cef4c-0e94-4876-b89c-7fb987eaca3d</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\EnterpriseInventory.Application\EnterpriseInventory.Application.csproj" />
+    <ProjectReference Include="..\EnterpriseInventory.Infrastructure\EnterpriseInventory.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
+  </ItemGroup>
+
+</Project>
