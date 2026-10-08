@@ -480,3 +480,8 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# Certificates and keys must never be committed
+*.pem
+*.key
+*.pfx

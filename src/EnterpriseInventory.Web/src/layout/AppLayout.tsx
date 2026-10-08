@@ -1,12 +1,23 @@
 import MenuIcon from '@mui/icons-material/Menu'
-import { AppBar, Box, Drawer, IconButton, Link, Toolbar, Typography } from '@mui/material'
+import { AppBar, Box, Drawer, IconButton, Link, Toolbar, Typography, useMediaQuery } from '@mui/material'
+import { useTheme } from '@mui/material/styles'
 import { useState } from 'react'
 import { Outlet } from 'react-router'
+import { brandColors } from '../app/theme'
 import { SidebarContent } from './SidebarContent'
 
 export const drawerWidth = 260
 
+const drawerPaperSx = {
+  width: drawerWidth,
+  border: 0,
+  bgcolor: brandColors.navy,
+  color: brandColors.white,
+} as const
+
 export function AppLayout() {
+  const theme = useTheme()
+  const isDesktop = useMediaQuery(theme.breakpoints.up('md'))
   const [mobileOpen, setMobileOpen] = useState(false)
 
   const closeMobileDrawer = () => setMobileOpen(false)
@@ -53,19 +64,22 @@ export function AppLayout() {
         </Toolbar>
       </AppBar>
 
-      <Box component="aside" sx={{ width: { md: drawerWidth }, flexShrink: { md: 0 } }}>
+      <Box sx={{ width: { md: drawerWidth }, flexShrink: { md: 0 } }}>
+        {/* The mobile drawer is a modal; it must not stay open (scroll lock, aria-hidden app) once the
+            permanent drawer takes over at the md breakpoint, e.g. after rotating a tablet. */}
         <Drawer
           variant="temporary"
-          open={mobileOpen}
+          open={mobileOpen && !isDesktop}
           onClose={closeMobileDrawer}
-          sx={{ display: { xs: 'block', md: 'none' }, '& .MuiDrawer-paper': { width: drawerWidth, border: 0 } }}
+          slotProps={{ paper: { 'aria-label': 'Menü' } }}
+          sx={{ display: { xs: 'block', md: 'none' }, '& .MuiDrawer-paper': drawerPaperSx }}
         >
           <SidebarContent onNavigate={closeMobileDrawer} />
         </Drawer>
         <Drawer
           variant="permanent"
           open
-          sx={{ display: { xs: 'none', md: 'block' }, '& .MuiDrawer-paper': { width: drawerWidth, border: 0 } }}
+          sx={{ display: { xs: 'none', md: 'block' }, '& .MuiDrawer-paper': drawerPaperSx }}
         >
           <SidebarContent />
         </Drawer>

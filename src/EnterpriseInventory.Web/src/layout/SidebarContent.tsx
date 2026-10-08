@@ -7,9 +7,10 @@ interface SidebarContentProps {
   onNavigate?: () => void
 }
 
+/** Sidebar body. The navy background and white text come from the Drawer paper (see AppLayout). */
 export function SidebarContent({ onNavigate }: SidebarContentProps) {
   return (
-    <Box sx={{ height: '100%', bgcolor: brandColors.navy, color: brandColors.white }}>
+    <>
       <Toolbar sx={{ px: 2.5 }}>
         <Typography variant="h6" component="div" noWrap sx={{ fontWeight: 700 }}>
           Kurumsal Envanter
@@ -28,10 +29,20 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
                 borderRadius: 1,
                 mb: 0.5,
                 color: 'inherit',
+                borderLeft: '4px solid transparent',
                 '& .MuiListItemIcon-root': { color: 'inherit', minWidth: 40 },
                 '&:hover': { bgcolor: 'rgba(255, 255, 255, 0.08)' },
-                '&.active': { bgcolor: brandColors.blue },
-                '&.active:hover': { bgcolor: brandColors.blue },
+                // Current page: blue fill plus a white edge and bold text, so it is not signalled by colour alone.
+                '&.active, &.active:hover': {
+                  bgcolor: brandColors.blue,
+                  borderLeftColor: brandColors.white,
+                  '& .MuiListItemText-primary': { fontWeight: 700 },
+                },
+                '&.Mui-focusVisible': {
+                  outline: `2px solid ${brandColors.white}`,
+                  outlineOffset: -2,
+                },
+                '&.Mui-focusVisible:not(.active)': { bgcolor: 'rgba(255, 255, 255, 0.16)' },
               }}
             >
               <ListItemIcon>{item.icon}</ListItemIcon>
@@ -40,6 +51,6 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
           ))}
         </List>
       </Box>
-    </Box>
+    </>
   )
 }

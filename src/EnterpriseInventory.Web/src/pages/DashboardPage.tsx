@@ -1,4 +1,5 @@
-import { Card, CardContent, Grid, Typography } from '@mui/material'
+import { Box, Card, CardContent, Grid, Typography } from '@mui/material'
+import { visuallyHidden } from '@mui/utils'
 import { PageHeader } from '../components/PageHeader'
 import { EmptyState } from '../components/states/EmptyState'
 
@@ -14,11 +15,14 @@ export function DashboardPage() {
           <Grid key={label} size={{ xs: 12, sm: 6, lg: 3 }}>
             <Card>
               <CardContent>
-                <Typography color="text.secondary" gutterBottom>
+                <Typography color="textSecondary" gutterBottom>
                   {label}
                 </Typography>
-                <Typography variant="h4" component="p" color="primary" aria-label={`${label}: veri yok`}>
-                  —
+                <Typography variant="h4" component="p" color="primary">
+                  <span aria-hidden="true">—</span>
+                  <Box component="span" sx={visuallyHidden}>
+                    Veri yok
+                  </Box>
                 </Typography>
               </CardContent>
             </Card>

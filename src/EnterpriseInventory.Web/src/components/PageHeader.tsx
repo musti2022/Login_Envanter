@@ -25,7 +25,7 @@ export function PageHeader({ title, description, actions }: PageHeaderProps) {
           {title}
         </Typography>
         {description && (
-          <Typography color="text.secondary" sx={{ mt: 0.5 }}>
+          <Typography color="textSecondary" sx={{ mt: 0.5 }}>
             {description}
           </Typography>
         )}

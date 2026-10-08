@@ -4,7 +4,7 @@
 üzerinden LDAPS ile yapılır ve yalnızca `Bim_Envanter` güvenlik grubunun üyeleri uygulamaya girebilir.
 Proje gereksinimleri ve 40 günlük plan: [`proje_talimatlari.md`](proje_talimatlari.md).
 
-> **Durum:** 1. gün — solution iskeleti. Login, envanter ve zimmet modülleri henüz yok.
+> **Durum:** 2. gün — solution iskeleti ve Türkçe arayüz kabuğu (menü, sayfalar, tema). Login, envanter ve zimmet modülleri henüz yok.
 
 ## Teknolojiler
 
@@ -64,6 +64,20 @@ cd src/EnterpriseInventory.Web
 cp .env.example .env.local
 npm run dev                                                               # /api ve /hubs API'ye yönlendirilir
 ```
+
+Vite proxy'si API'nin HTTPS sertifikasını doğrular (`secure: true`); doğrulama kapatılmaz. Node.js işletim
+sisteminin sertifika deposunu varsayılan olarak kullanmadığı için ASP.NET Core geliştirme sertifikasını
+Node'a ayrıca tanıtın:
+
+```bash
+dotnet dev-certs https --trust
+dotnet dev-certs https --export-path "$HOME/.aspnet/https/aspnet-dev-cert.pem" --format Pem   # yalnızca açık sertifika
+export NODE_EXTRA_CA_CERTS="$HOME/.aspnet/https/aspnet-dev-cert.pem"
+# Windows PowerShell: $env:NODE_EXTRA_CA_CERTS = "$HOME\.aspnet\https\aspnet-dev-cert.pem"
+```
+
+Proxy hedefi `localhost` dışında bir adres olacaksa sertifika adı doğrulaması için `vite.config.ts` içindeki
+`changeOrigin` ayarı gözden geçirilmelidir.
 
 ## Konfigürasyon ve gizli değerler
 

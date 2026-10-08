@@ -15,7 +15,7 @@ export function EmptyState({ title, description, icon, action }: EmptyStateProps
       <Box aria-hidden="true" sx={{ fontSize: 48, lineHeight: 1, mb: 1, '& svg': { fontSize: 'inherit' } }}>
         {icon ?? <InboxIcon />}
       </Box>
-      <Typography variant="h6" component="p" color="text.primary">
+      <Typography variant="h6" component="p" color="textPrimary">
         {title}
       </Typography>
       {description && <Typography sx={{ mt: 1, maxWidth: 520, mx: 'auto' }}>{description}</Typography>}

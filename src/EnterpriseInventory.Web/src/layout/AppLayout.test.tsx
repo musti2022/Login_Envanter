@@ -1,9 +1,40 @@
-import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { renderWithRouter } from '../test/renderWithRouter'
 import { navigationItems } from './navigation'
 
 function mainMenus() {
   return screen.queryAllByRole('navigation', { name: 'Ana menü' })
+}
+
+/** Controllable window.matchMedia so MUI's useMediaQuery can see a breakpoint change. */
+function mockViewport(initiallyDesktop: boolean) {
+  let desktop = initiallyDesktop
+  const listeners = new Set<() => void>()
+  const original = window.matchMedia
+
+  window.matchMedia = (query: string) =>
+    ({
+      media: query,
+      get matches() {
+        return desktop
+      },
+      addEventListener: (_: string, listener: () => void) => listeners.add(listener),
+      removeEventListener: (_: string, listener: () => void) => listeners.delete(listener),
+      addListener: (listener: () => void) => listeners.add(listener),
+      removeListener: (listener: () => void) => listeners.delete(listener),
+      onchange: null,
+      dispatchEvent: () => true,
+    }) as unknown as MediaQueryList
+
+  return {
+    setDesktop(value: boolean) {
+      desktop = value
+      act(() => listeners.forEach((listener) => listener()))
+    },
+    restore() {
+      window.matchMedia = original
+    },
+  }
 }
 
 describe('AppLayout', () => {
@@ -44,17 +75,39 @@ describe('AppLayout', () => {
     expect(within(menu).getByRole('link', { name: 'Gösterge Paneli' })).not.toHaveAttribute('aria-current')
   })
 
-  it('opens the mobile menu and closes it after navigating', async () => {
+  it('opens the mobile menu as a named dialog and closes it after navigating', async () => {
     const { router } = renderWithRouter('/')
-    expect(screen.queryByRole('presentation')).not.toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Menüyü aç' }))
-    const mobileDrawer = await screen.findByRole('presentation')
+    const mobileDrawer = await screen.findByRole('dialog', { name: 'Menü' })
 
     fireEvent.click(within(mobileDrawer).getByRole('link', { name: 'Zimmetler' }))
 
     expect(router.state.location.pathname).toBe('/zimmetler')
-    await waitFor(() => expect(screen.queryByRole('presentation')).not.toBeInTheDocument())
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  })
+
+  it('closes the mobile menu when the screen grows to desktop width', async () => {
+    const viewport = mockViewport(false)
+    try {
+      renderWithRouter('/')
+      fireEvent.click(screen.getByRole('button', { name: 'Menüyü aç' }))
+      await screen.findByRole('dialog', { name: 'Menü' })
+
+      viewport.setDesktop(true)
+
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+      expect(document.body.style.overflow).not.toBe('hidden')
+    } finally {
+      viewport.restore()
+    }
+  })
+
+  it('does not expose an empty complementary landmark', () => {
+    renderWithRouter('/')
+
+    expect(screen.queryByRole('complementary')).not.toBeInTheDocument()
   })
 
   it('shows a Turkish not-found page for unknown addresses', () => {
