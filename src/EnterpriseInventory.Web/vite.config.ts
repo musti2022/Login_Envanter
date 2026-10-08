@@ -10,6 +10,18 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react()],
+    build: {
+      rolldownOptions: {
+        output: {
+          codeSplitting: {
+            groups: [
+              { name: 'mui', test: /node_modules[\\/](@mui|@emotion)[\\/]/ },
+              { name: 'vendor', test: /node_modules[\\/]/ },
+            ],
+          },
+        },
+      },
+    },
     server: {
       proxy: {
         '/api': { target: apiTarget, changeOrigin: false, secure: true },

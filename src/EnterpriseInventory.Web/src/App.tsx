@@ -1,8 +1,8 @@
 import { createBrowserRouter, RouterProvider } from 'react-router'
 import { AppProviders } from './app/AppProviders'
-import { HomePage } from './pages/HomePage'
+import { routes } from './app/routes'
 
-const router = createBrowserRouter([{ path: '/', element: <HomePage /> }])
+const router = createBrowserRouter(routes)
 
 export default function App() {
   return (
