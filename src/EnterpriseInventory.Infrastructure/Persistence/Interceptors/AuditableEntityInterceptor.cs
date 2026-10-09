@@ -6,8 +6,8 @@ using Microsoft.EntityFrameworkCore.Diagnostics;
 namespace EnterpriseInventory.Infrastructure.Persistence.Interceptors;
 
 /// <summary>
-/// Stamps CreatedAt/CreatedBy and UpdatedAt/UpdatedBy on save. Writes without a signed-in user are
-/// refused, so no data can be changed anonymously.
+/// Stamps CreatedAt/CreatedBy and UpdatedAt/UpdatedBy on save. Any write without a signed-in user is
+/// refused, whether or not the changed records have audit fields, so no data can be changed anonymously.
 /// </summary>
 public sealed class AuditableEntityInterceptor(ICurrentUser currentUser, TimeProvider timeProvider) : SaveChangesInterceptor
 {
@@ -35,8 +35,8 @@ public sealed class AuditableEntityInterceptor(ICurrentUser currentUser, TimePro
             return;
         }
 
-        var entries = context.ChangeTracker.Entries<AuditableEntity>()
-            .Where(e => e.State is EntityState.Added or EntityState.Modified)
+        var entries = context.ChangeTracker.Entries()
+            .Where(e => e.State is EntityState.Added or EntityState.Modified or EntityState.Deleted)
             .ToList();
         if (entries.Count == 0)
         {
@@ -52,13 +52,18 @@ public sealed class AuditableEntityInterceptor(ICurrentUser currentUser, TimePro
         var now = timeProvider.GetUtcNow();
         foreach (var entry in entries)
         {
+            if (entry.Entity is not AuditableEntity auditable)
+            {
+                continue;
+            }
+
             if (entry.State == EntityState.Added)
             {
-                entry.Entity.MarkCreated(userName, now);
+                auditable.MarkCreated(userName, now);
             }
-            else
+            else if (entry.State == EntityState.Modified)
             {
-                entry.Entity.MarkUpdated(userName, now);
+                auditable.MarkUpdated(userName, now);
             }
         }
     }

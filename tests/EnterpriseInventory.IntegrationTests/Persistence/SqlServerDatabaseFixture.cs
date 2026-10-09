@@ -81,6 +81,14 @@ public sealed class SqlServerDatabaseFixture : IAsyncLifetime
         await context.SaveChangesAsync();
         return entity;
     }
+
+    /// <summary>Saves several new entities (and everything reachable from them) in one save.</summary>
+    public async Task SaveAllAsync(params object[] entities)
+    {
+        await using var context = CreateContext();
+        context.AddRange(entities);
+        await context.SaveChangesAsync();
+    }
 }
 
 /// <summary>Tests sharing one migrated database. They run one after another and each creates its own rows.</summary>

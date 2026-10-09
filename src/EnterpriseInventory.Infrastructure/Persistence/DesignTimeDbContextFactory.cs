@@ -10,7 +10,9 @@ namespace EnterpriseInventory.Infrastructure.Persistence;
 /// </summary>
 internal sealed class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<ApplicationDbContext>
 {
-    private const string NoDatabase = "Server=.;Database=EnterpriseInventory;Integrated Security=true;TrustServerCertificate=false";
+    // Deliberately unreachable: without the variable, commands that need a database fail instead of
+    // migrating whatever database happens to be on the local default instance.
+    private const string NoDatabase = "Server=ConnectionStrings__Migrations-is-not-set;Database=none;Connect Timeout=1";
 
     public ApplicationDbContext CreateDbContext(string[] args)
     {

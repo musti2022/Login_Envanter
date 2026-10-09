@@ -105,32 +105,65 @@ public class AssetPersistenceTests(SqlServerDatabaseFixture database)
         var employeeA = await database.SaveAsync(NewEmployee(database.Clock.GetUtcNow()));
         var employeeB = await database.SaveAsync(NewEmployee(database.Clock.GetUtcNow()));
         var assignedAt = database.Clock.GetUtcNow();
+        byte[] versionBeforeHandover;
         await using (var context = database.CreateContext())
         {
             var tracked = await context.Assets.Include(a => a.Assignments).SingleAsync(a => a.Id == asset.Id);
             tracked.Assign(await context.Employees.SingleAsync(e => e.Id == employeeA.Id), "Dizüstü", null, "test.admin", assignedAt);
             await context.SaveChangesAsync();
+            versionBeforeHandover = tracked.RowVersion;
         }
 
         database.Clock.Advance(TimeSpan.FromDays(30));
         var handoverAt = database.Clock.GetUtcNow();
-        await using (var context = database.CreateContext())
+        await using (var context = database.CreateContext("devir.admin"))
         {
             var tracked = await context.Assets.Include(a => a.Assignments).SingleAsync(a => a.Id == asset.Id);
-            tracked.Return("test.admin", handoverAt);
-            tracked.Assign(await context.Employees.SingleAsync(e => e.Id == employeeB.Id), "Dizüstü", null, "test.admin", handoverAt);
+            tracked.Return("devir.admin", handoverAt);
+            tracked.Assign(await context.Employees.SingleAsync(e => e.Id == employeeB.Id), "Dizüstü", null, "devir.admin", handoverAt);
             await context.SaveChangesAsync();
         }
 
         await using var reader = database.CreateContext();
         var loaded = await reader.Assets.Include(a => a.Assignments).SingleAsync(a => a.Id == asset.Id);
         Assert.Equal(AssetStatus.Assigned, loaded.Status);
+        // The status ends where it started, but the asset row is still updated so its RowVersion guards the handover.
+        Assert.NotEqual(versionBeforeHandover, loaded.RowVersion);
+        Assert.Equal("devir.admin", loaded.UpdatedBy);
+        Assert.Equal(handoverAt, loaded.UpdatedAt);
         Assert.Equal(2, loaded.Assignments.Count);
         var previous = loaded.Assignments.Single(x => x.EmployeeId == employeeA.Id);
         Assert.Equal(assignedAt, previous.AssignedAt);
         Assert.Equal(handoverAt, previous.ReturnedAt);
-        Assert.Equal("test.admin", previous.ReturnedBy);
+        Assert.Equal("devir.admin", previous.ReturnedBy);
         Assert.Equal(employeeB.Id, loaded.ActiveAssignment?.EmployeeId);
+    }
+
+    [SqlServerFact]
+    public async Task Return_and_handover_of_the_same_asset_at_once_is_a_conflict()
+    {
+        var asset = NewAsset();
+        asset.Assign(NewEmployee(database.Clock.GetUtcNow()), "Dizüstü", null, "test.admin", database.Clock.GetUtcNow());
+        await database.SaveAsync(asset);
+        var employeeB = await database.SaveAsync(NewEmployee(database.Clock.GetUtcNow()));
+        database.Clock.Advance(TimeSpan.FromDays(1));
+        var now = database.Clock.GetUtcNow();
+        await using var first = database.CreateContext("iade.admin");
+        await using var second = database.CreateContext("devir.admin");
+        var firstCopy = await first.Assets.Include(a => a.Assignments).SingleAsync(a => a.Id == asset.Id);
+        var secondCopy = await second.Assets.Include(a => a.Assignments).SingleAsync(a => a.Id == asset.Id);
+
+        firstCopy.Return("iade.admin", now);
+        await first.SaveChangesAsync();
+        secondCopy.Return("devir.admin", now);
+        secondCopy.Assign(await second.Employees.SingleAsync(e => e.Id == employeeB.Id), "Dizüstü", null, "devir.admin", now);
+
+        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => second.SaveChangesAsync());
+        await using var reader = database.CreateContext();
+        var loaded = await reader.Assets.Include(a => a.Assignments).SingleAsync(a => a.Id == asset.Id);
+        Assert.Equal(AssetStatus.Available, loaded.Status);
+        Assert.Null(loaded.ActiveAssignment);
+        Assert.Equal("iade.admin", Assert.Single(loaded.Assignments).ReturnedBy);
     }
 
     [SqlServerFact]

@@ -7,12 +7,16 @@ Testler: `tests/EnterpriseInventory.IntegrationTests/Persistence`.
 
 - **Tablolar:** `Assets`, `AssetAssignments`, `Brands`, `AssetModels`, `Cities`, `Departments`, `Locations`,
   `Employees`, `AdminUsers`, `AuditLogs`. Enum'lar `int` olarak saklanır ve `CHECK` ile sınırlanır.
-- **Eşzamanlılık:** Değiştirilebilen tüm kayıtlarda `RowVersion` (`rowversion`) vardır. Eski bir kopya
-  kaydedilirse EF Core `DbUpdateConcurrencyException` atar; API bunu 13. günde HTTP 409'a çevirecek.
-  Zimmet verme ve iade, `Assets` satırını da güncellediği için aynı demirbaşa yapılan eşzamanlı işlemler
-  de çakışma olarak yakalanır.
+- **Eşzamanlılık:** Demirbaş, tanım (marka, model, şehir, departman, lokasyon) ve çalışan kayıtlarında
+  `RowVersion` (`rowversion`) vardır. Eski bir kopya kaydedilirse EF Core `DbUpdateConcurrencyException` atar;
+  API bunu 13. günde HTTP 409'a çevirecek. Zimmetlerin kendi `RowVersion`'ı yoktur, demirbaşın parçasıdır:
+  zimmet eklendiğinde veya değiştiğinde `ApplicationDbContext` demirbaş satırını da günceller. Böylece aynı
+  demirbaşa aynı anda yapılan zimmet, iade ve devir (iade + yeni zimmet) işlemlerinden ikincisi çakışma alır.
+  `AdminUsers` yalnızca giriş bilgisini tutar, orada son yazan kazanır; `AuditLogs` değiştirilmez.
 - **Audit alanları:** `CreatedAt/By`, `UpdatedAt/By` kayıt sırasında `AuditableEntityInterceptor` tarafından
-  oturum açmış kullanıcıyla doldurulur. Oturum yoksa kayıt reddedilir (anonim yazma yok). Saatler UTC'dir.
+  oturum açmış kullanıcıyla doldurulur. Saatler UTC'dir. Oturum açmış kullanıcı yoksa audit alanı olmayan
+  tablolar dahil hiçbir değişiklik kaydedilmez (anonim yazma yok). Giriş sırasında `AdminUsers` kaydı
+  yazılacağı için login akışı (7–8. gün) giriş yapan kullanıcıyı bu kontrole tanıtacak.
 - **Silme yok:** Tüm ilişkiler `ON DELETE NO ACTION`. Demirbaş arşivlenir (`IsDeleted`), zimmet geçmişi ve
   tanımlar silinmez. Arşivlenen kayıtlar için global sorgu filtresi yoktur; listeler `IsDeleted = 0`
   koşulunu kendisi ekler, böylece geçmiş ve raporlar arşivi görmeye devam eder.
@@ -72,8 +76,9 @@ dotnet ef database update --project src/EnterpriseInventory.Infrastructure
   SSMS bu ayarı varsayılan olarak açık tutar.
 - Betik her migration'ı ayrı transaction'da uygular. `-b` ile sqlcmd ilk hatada durur ve yarım kalan
   migration geri alınır (denendi: hatalı bir çalıştırmadan sonra şemada değişiklik kalmadı).
-- `ConnectionStrings__Migrations` yalnızca `dotnet ef` için kullanılır, uygulama okumaz. Bağlantı dizeleri
-  repoya yazılmaz.
+- `ConnectionStrings__Migrations` yalnızca `dotnet ef` için kullanılır, uygulama okumaz. Tanımlı değilse
+  `database update` hiçbir veritabanına bağlanmadan hata verir; `migrations add` ve `migrations script`
+  veritabanı gerektirmez. Bağlantı dizeleri repoya yazılmaz.
 - Geri alma (rollback) ve yedekten dönüş senaryoları yayın aşamasında (`deploy/`) yazılıp test edilecek.
 
 ## Testler
@@ -90,5 +95,5 @@ dotnet test EnterpriseInventory.slnx
 Her test çalıştırması `EI_Test_<guid>` adlı yeni bir veritabanı oluşturur (`Turkish_CI_AS`), migration'ları
 uygular ve sonunda siler. Bu yüzden hesabın `CREATE DATABASE` yetkisi olmalı; yalnızca test sunucusunda
 kullanın. Testler gerçek SQL Server'da şunları doğrular: kayıt/okuma ve audit alanları, RowVersion çakışması,
-iki yöneticinin aynı anda zimmet vermesi, iade sonrası yeniden zimmet ve geçmiş, lokasyonu temizleme ve
-yukarıdaki tablodaki her kısıt.
+iki yöneticinin aynı anda zimmet vermesi, aynı anda iade ve devir, iade sonrası yeniden zimmet ve geçmiş,
+lokasyonu temizleme ve yukarıdaki tablodaki her kısıt.

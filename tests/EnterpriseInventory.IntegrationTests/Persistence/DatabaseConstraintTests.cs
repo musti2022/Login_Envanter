@@ -1,4 +1,5 @@
 using EnterpriseInventory.Domain.Assets;
+using EnterpriseInventory.Domain.Catalog;
 using EnterpriseInventory.Domain.Organization;
 using Microsoft.EntityFrameworkCore;
 using static EnterpriseInventory.IntegrationTests.Persistence.PersistenceTestData;
@@ -35,15 +36,39 @@ public class DatabaseConstraintTests(SqlServerDatabaseFixture database)
     }
 
     [SqlServerFact]
-    public async Task Unknown_status_and_blank_asset_code_are_rejected()
+    public async Task Unknown_status_or_type_and_blank_code_or_serial_number_are_rejected()
     {
-        var asset = await database.SaveAsync(NewAsset());
+        var asset = await database.SaveAsync(NewAsset(serialNumber: Unique("SN")));
         await using var context = database.CreateContext();
 
         await AssertViolatesAsync("CK_Assets_Status", () =>
             context.Database.ExecuteSqlAsync($"UPDATE [Assets] SET [Status] = {99} WHERE [Id] = {asset.Id}"));
+        await AssertViolatesAsync("CK_Assets_AssetType", () =>
+            context.Database.ExecuteSqlAsync($"UPDATE [Assets] SET [AssetType] = {50} WHERE [Id] = {asset.Id}"));
         await AssertViolatesAsync("CK_Assets_AssetCode_NotBlank", () =>
             context.Database.ExecuteSqlAsync($"UPDATE [Assets] SET [AssetCode] = {"   "} WHERE [Id] = {asset.Id}"));
+        await AssertViolatesAsync("CK_Assets_SerialNumber_NotBlank", () =>
+            context.Database.ExecuteSqlAsync($"UPDATE [Assets] SET [SerialNumber] = {"   "} WHERE [Id] = {asset.Id}"));
+    }
+
+    [SqlServerFact]
+    public async Task Audit_records_need_a_known_action_and_old_or_new_values()
+    {
+        await using var context = database.CreateContext();
+        var now = database.Clock.GetUtcNow();
+
+        await AssertViolatesAsync("CK_AuditLogs_Action", () =>
+            context.Database.ExecuteSqlAsync(
+                $"""
+                INSERT INTO [AuditLogs] ([EntityName], [EntityId], [Action], [NewValues], [UserName], [Timestamp], [CorrelationId])
+                VALUES ({"Asset"}, {"1"}, {99}, {"{}"}, {"test.admin"}, {now}, {"c-1"})
+                """));
+        await AssertViolatesAsync("CK_AuditLogs_HasValues", () =>
+            context.Database.ExecuteSqlAsync(
+                $"""
+                INSERT INTO [AuditLogs] ([EntityName], [EntityId], [Action], [UserName], [Timestamp], [CorrelationId])
+                VALUES ({"Asset"}, {"1"}, {1}, {"test.admin"}, {now}, {"c-1"})
+                """));
     }
 
     [SqlServerFact]
@@ -86,6 +111,43 @@ public class DatabaseConstraintTests(SqlServerDatabaseFixture database)
 
         await AssertViolatesAsync("IX_Cities_Name", () =>
             database.SaveAsync(City.Create($"İZMİR {suffix.ToUpperInvariant()}")));
+    }
+
+    [SqlServerFact]
+    public async Task Brand_and_department_names_are_unique()
+    {
+        var brandName = Unique("Marka");
+        var departmentName = Unique("Birim");
+        await database.SaveAllAsync(Brand.Create(brandName), Department.Create(departmentName));
+
+        await AssertViolatesAsync("IX_Brands_Name", () => database.SaveAsync(Brand.Create(brandName)));
+        await AssertViolatesAsync("IX_Departments_Name", () => database.SaveAsync(Department.Create(departmentName)));
+    }
+
+    [SqlServerFact]
+    public async Task Model_names_are_unique_within_a_brand_only()
+    {
+        var modelName = Unique("Model");
+        await database.SaveAllAsync(
+            AssetModel.Create(Brand.Create(Unique("Marka")), modelName),
+            AssetModel.Create(Brand.Create(Unique("Marka")), modelName));
+        var brand = Brand.Create(Unique("Marka"));
+
+        await AssertViolatesAsync("IX_AssetModels_BrandId_Name", () =>
+            database.SaveAllAsync(AssetModel.Create(brand, modelName), AssetModel.Create(brand, modelName)));
+    }
+
+    [SqlServerFact]
+    public async Task Location_names_are_unique_within_a_city_only()
+    {
+        var locationName = Unique("Konum");
+        await database.SaveAllAsync(
+            Location.Create(City.Create(Unique("Şehir")), locationName),
+            Location.Create(City.Create(Unique("Şehir")), locationName));
+        var city = City.Create(Unique("Şehir"));
+
+        await AssertViolatesAsync("IX_Locations_CityId_Name", () =>
+            database.SaveAllAsync(Location.Create(city, locationName), Location.Create(city, locationName)));
     }
 
     private async Task<(Asset Asset, AssetAssignment Assignment)> SaveAssignedAssetAsync()
