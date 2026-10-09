@@ -4,15 +4,17 @@
 üzerinden LDAPS ile yapılır ve yalnızca `Bim_Envanter` güvenlik grubunun üyeleri uygulamaya girebilir.
 Proje gereksinimleri ve 40 günlük plan: [`proje_talimatlari.md`](proje_talimatlari.md).
 
-> **Durum:** 15. gün — solution iskeleti, Türkçe arayüz kabuğu, domain modeli, SQL Server şeması (EF Core migration,
+> **Durum:** 20. gün — solution iskeleti, Türkçe arayüz kabuğu, domain modeli, SQL Server şeması (EF Core migration,
 > RowVersion, kısıtlar), API altyapısı (health endpoint'leri, varsayılan olarak kapalı yetkilendirme, hata yanıtları,
 > güvenlik başlıkları, rate limiting), Active Directory LDAPS bağlantısı (sıkı TLS sertifika doğrulaması), giriş API'si
 > (AD parola doğrulaması, `Bim_Envanter` grup SID kontrolü, giriş audit kaydı), oturum güvenliği (sunucu taraflı
 > oturum, CSRF koruması, çıkış, boşta kalma ve mutlak süre, açık oturumların AD'de düzenli yeniden kontrolü, kalıcı
-> Data Protection anahtarları), Türkçe giriş ekranı ile korumalı sayfalar ve demirbaş API'si (listeleme, arama,
+> Data Protection anahtarları), Türkçe giriş ekranı ile korumalı sayfalar, demirbaş API'si (listeleme, arama,
 > filtre, sıralama, sayfalama, detay, ekleme, RowVersion ile güncelleme ve `409` çakışma uyarısı, arşivleme, audit
-> geçmişi). AD entegrasyonu Samba test domain'i ile test edildi; şirketin gerçek AD'si ile henüz denenmedi. Envanter
-> ve zimmet ekranları ile zimmet/iade API'si henüz yok.
+> geçmişi), tanım listeleri API'si (marka, model, şehir, lokasyon, departman) ve envanter ekranları (gösterge paneli,
+> tablo, arama ve filtreler, ekleme/düzenleme formu, detay, geçmiş, arşivleme, telefon görünümü). AD entegrasyonu
+> Samba test domain'i ile test edildi; şirketin gerçek AD'si ile henüz denenmedi. Zimmet/iade API'si ve ekranları,
+> tanım yönetimi (ad değiştirme, pasifleştirme) ve SignalR henüz yok.
 
 ## Teknolojiler
 
@@ -47,7 +49,9 @@ yanıtları, güvenlik başlıkları ve giriş API'si için [`docs/api.md`](docs
 sertifika doğrulaması, giriş akışı ve grup yetkisi için [`docs/active-directory.md`](docs/active-directory.md); oturum,
 CSRF, çıkış ve zaman aşımı kuralları için [`docs/session-security.md`](docs/session-security.md); giriş ekranı ve
 korumalı sayfalar için [`docs/web-auth.md`](docs/web-auth.md); demirbaş uç noktaları, arama ve filtreler,
-RowVersion çakışması, arşivleme ve audit için [`docs/assets-api.md`](docs/assets-api.md).
+RowVersion çakışması, arşivleme ve audit için [`docs/assets-api.md`](docs/assets-api.md); marka, model, şehir,
+lokasyon ve departman listeleri için [`docs/lookups-api.md`](docs/lookups-api.md); gösterge paneli, envanter tablosu,
+filtreler, form ve detay ekranları için [`docs/inventory-ui.md`](docs/inventory-ui.md).
 
 ## Gereksinimler
 

@@ -2,12 +2,14 @@
 
 `npm run test:e2e`, React uygulamasının üretim derlemesini (`vite preview`) Chromium'da açar ve Vite proxy'si
 üzerinden gerçek API'ye bağlanır. API `Development` ortamında, sahte dizinle (`ActiveDirectory:Mode=Fake`) ve gerçek
-bir SQL Server veritabanıyla çalışır. Testlerin ne denediği: [`docs/web-auth.md`](../../../docs/web-auth.md#testler).
+bir SQL Server veritabanıyla çalışır. Testlerin ne denediği: [`docs/web-auth.md`](../../../docs/web-auth.md#testler) ve
+[`docs/inventory-ui.md`](../../../docs/inventory-ui.md#test-sonuçları).
 
 ## Bir kerelik hazırlık
 
 1. Yalnızca bu testler için boş bir veritabanı oluşturup migration'ları uygulayın (test sunucusunda; testler
-   `AdminUsers`, `UserSessions` ve `AuditLogs` tablolarına kayıt yazar):
+   `AdminUsers`, `UserSessions` ve `AuditLogs` tablolarına; envanter testleri de her çalıştırmada benzersiz bir önekle
+   demirbaş, marka, model, şehir, lokasyon ve departman ekler, bu yüzden üretim veritabanına bağlanmayın):
 
    ```bash
    # SQL Server'da: CREATE DATABASE [EI_E2E] COLLATE Turkish_CI_AS;
