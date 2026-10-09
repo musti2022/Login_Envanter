@@ -34,6 +34,36 @@ internal static class AssetApi
         return await client.SendAsync(request);
     }
 
+    /// <summary>POSTs a new asset, asserts <c>201</c> and returns its details.</summary>
+    public static async Task<JsonElement> CreateAssetAsync(this HttpClient client, Dictionary<string, object?> body)
+    {
+        using var response = await client.SendWithCsrfAsync(HttpMethod.Post, "/api/assets", body);
+        return await ReadAsync(response, HttpStatusCode.Created);
+    }
+
+    /// <summary>A <c>PUT /api/assets/{id}</c> body that changes nothing: the asset as read, with its row version.</summary>
+    public static Dictionary<string, object?> ToUpdateBody(this JsonElement asset)
+    {
+        static string? Text(JsonElement element) => element.ValueKind == JsonValueKind.Null ? null : element.GetString();
+        var location = asset.GetProperty("location");
+        return new Dictionary<string, object?>
+        {
+            ["assetCode"] = asset.GetProperty("assetCode").GetString(),
+            ["assetType"] = asset.GetProperty("assetType").GetString(),
+            ["status"] = asset.GetProperty("status").GetString(),
+            ["modelId"] = asset.GetProperty("model").GetProperty("id").GetInt32(),
+            ["cityId"] = asset.GetProperty("city").GetProperty("id").GetInt32(),
+            ["departmentId"] = asset.GetProperty("department").GetProperty("id").GetInt32(),
+            ["locationId"] = location.ValueKind == JsonValueKind.Null ? null : location.GetProperty("id").GetInt32(),
+            ["computerName"] = Text(asset.GetProperty("computerName")),
+            ["serialNumber"] = Text(asset.GetProperty("serialNumber")),
+            ["description"] = Text(asset.GetProperty("description")),
+            ["rowVersion"] = asset.GetProperty("rowVersion").GetString(),
+        };
+    }
+
+    public static int Id(this JsonElement asset) => asset.GetProperty("id").GetInt32();
+
     public static IEnumerable<string> Codes(this JsonElement page) =>
         page.GetProperty("items").EnumerateArray().Select(item => item.GetProperty("assetCode").GetString()!);
 

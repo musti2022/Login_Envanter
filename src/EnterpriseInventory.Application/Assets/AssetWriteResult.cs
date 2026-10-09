@@ -39,7 +39,7 @@ public sealed record AssetWriteResult(
     public static AssetWriteResult Rule(string code) => new(AssetWriteOutcome.RuleViolated, RuleCode: code);
 }
 
-/// <summary>Turkish field messages for checks that need the database, shared by every <see cref="IAssetStore"/>.</summary>
+/// <summary>Turkish field messages for checks that need the database or the asset, shared by every <see cref="IAssetStore"/>.</summary>
 public static class AssetMessages
 {
     public const string ModelNotFound = "Seçilen model bulunamadı.";
@@ -54,4 +54,5 @@ public static class AssetMessages
     public const string LocationInAnotherCity = "Seçilen lokasyon seçilen şehirde değil.";
     public const string AssetCodeTaken = "Bu demirbaş kodu başka bir kayıtta kullanılıyor.";
     public const string SerialNumberTaken = "Bu seri numarası başka bir kayıtta kullanılıyor.";
+    public const string StatusAssignedOnlyByAssignment = "Zimmetli durumu yalnızca demirbaş zimmetlenerek verilir.";
 }

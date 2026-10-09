@@ -12,6 +12,7 @@ public sealed record AssetListResult(PagedResult<AssetListItem>? Page, IDictiona
 public sealed class AssetService(
     IValidator<AssetListRequest> listValidator,
     IValidator<SaveAssetRequest> saveValidator,
+    IValidator<UpdateAssetRequest> updateValidator,
     IAssetStore store)
 {
     public async Task<AssetListResult> ListAsync(AssetListRequest request, CancellationToken cancellationToken)
@@ -37,6 +38,16 @@ public sealed class AssetService(
         var validation = await saveValidator.ValidateAsync(request, cancellationToken).ConfigureAwait(false);
         return validation.IsValid
             ? await store.CreateAsync(AssetDraft.From(request), cancellationToken).ConfigureAwait(false)
+            : AssetWriteResult.Invalid(validation.ToDictionary());
+    }
+
+    public async Task<AssetWriteResult> UpdateAsync(int id, UpdateAssetRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var validation = await updateValidator.ValidateAsync(request, cancellationToken).ConfigureAwait(false);
+        return validation.IsValid
+            ? await store.UpdateAsync(id, AssetDraft.From(request), AssetRowVersion.Decode(request.RowVersion), cancellationToken).ConfigureAwait(false)
             : AssetWriteResult.Invalid(validation.ToDictionary());
     }
 }

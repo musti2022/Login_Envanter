@@ -195,6 +195,108 @@ internal sealed partial class AssetStore(
         return AssetWriteResult.Succeeded(await FindAsync(asset.Id, cancellationToken).ConfigureAwait(false));
     }
 
+    public async Task<AssetWriteResult> UpdateAsync(int id, AssetDraft draft, byte[] rowVersion, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(draft);
+        ArgumentNullException.ThrowIfNull(rowVersion);
+
+        var asset = await LoadForChangeAsync(id, cancellationToken).ConfigureAwait(false);
+        if (asset is null)
+        {
+            return AssetWriteResult.NotFound;
+        }
+
+        // The caller edited an older version: refuse before looking at anything else. The same check is repeated
+        // by the database on save (the rowversion is part of the UPDATE's WHERE), which catches edits that land
+        // between this read and the save.
+        if (!asset.RowVersion.AsSpan().SequenceEqual(rowVersion))
+        {
+            LogConflict(id);
+            return AssetWriteResult.Conflict;
+        }
+
+        if (asset.IsDeleted)
+        {
+            return AssetWriteResult.Rule(DomainErrors.Asset.Archived);
+        }
+
+        var (references, errors) = await LoadReferencesAsync(draft, asset, cancellationToken).ConfigureAwait(false);
+        if (draft.Status == AssetStatus.Assigned && asset.Status != AssetStatus.Assigned)
+        {
+            errors[nameof(AssetDraft.Status)] = [AssetMessages.StatusAssignedOnlyByAssignment];
+        }
+
+        if (errors.Count > 0)
+        {
+            return AssetWriteResult.Invalid(errors);
+        }
+
+        var duplicates = await FindDuplicatesAsync(draft, exceptAssetId: id, cancellationToken).ConfigureAwait(false);
+        if (duplicates.Count > 0)
+        {
+            return AssetWriteResult.Duplicate(duplicates);
+        }
+
+        var before = AssetAuditTrail.Snapshot(asset);
+        try
+        {
+            asset.UpdateDetails(draft.AssetCode, draft.AssetType, draft.ComputerName, draft.SerialNumber, draft.Description);
+            asset.ChangeModel(references.Model);
+            asset.ChangeLocation(references.City, references.Department, references.Location);
+            if (draft.Status is { } status && status != asset.Status)
+            {
+                asset.ChangeStatus(status);
+            }
+        }
+        catch (DomainException ex)
+        {
+            db.ChangeTracker.Clear();
+            return AssetWriteResult.Rule(ex.Code);
+        }
+
+        var changes = AssetAuditTrail.Changes(before, AssetAuditTrail.Snapshot(asset)).ToList();
+        if (changes.Count == 0)
+        {
+            return AssetWriteResult.Succeeded(await FindAsync(id, cancellationToken).ConfigureAwait(false));
+        }
+
+        foreach (var (action, oldValues, newValues) in changes)
+        {
+            Audit(asset, action, oldValues, newValues);
+        }
+
+        try
+        {
+            // One SaveChanges: the asset and its audit records are committed together or not at all.
+            await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            db.ChangeTracker.Clear();
+            LogConflict(id);
+            return AssetWriteResult.Conflict;
+        }
+        catch (DbUpdateException ex) when (ex.IsUniqueKeyViolation())
+        {
+            db.ChangeTracker.Clear();
+            return AssetWriteResult.Duplicate(DuplicateField(ex));
+        }
+
+        var actions = string.Join(", ", changes.Select(c => c.Action));
+        LogUpdated(id, actions);
+        return AssetWriteResult.Succeeded(await FindAsync(id, cancellationToken).ConfigureAwait(false));
+    }
+
+    /// <summary>The asset with everything its audit snapshot names, tracked so it can be changed.</summary>
+    private Task<Asset?> LoadForChangeAsync(int id, CancellationToken cancellationToken) =>
+        db.Assets
+            .Include(a => a.Brand)
+            .Include(a => a.Model)
+            .Include(a => a.City)
+            .Include(a => a.Department)
+            .Include(a => a.Location)
+            .SingleOrDefaultAsync(a => a.Id == id, cancellationToken);
+
     /// <summary>
     /// Loads the chosen lookups. A missing one is an error; an inactive one is an error only when it is newly
     /// chosen, because an asset may keep a value that has since been deactivated (the domain's rule).
@@ -304,6 +406,12 @@ internal sealed partial class AssetStore(
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Asset {AssetId} ({AssetCode}) created")]
     private partial void LogCreated(int assetId, string assetCode);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Asset {AssetId} updated ({AuditActions})")]
+    private partial void LogUpdated(int assetId, string auditActions);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Asset {AssetId} not saved: it was changed by someone else since the caller read it")]
+    private partial void LogConflict(int assetId);
 
     private sealed record References(AssetModel Model, City City, Department Department, Location? Location);
 }

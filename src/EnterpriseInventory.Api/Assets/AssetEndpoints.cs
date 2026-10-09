@@ -24,6 +24,9 @@ internal static class AssetEndpoints
         assets.MapPost(string.Empty, CreateAsync)
             .Accepts<SaveAssetRequest>("application/json")
             .WithMetadata(new RequestSizeLimitAttribute(MaxBodyBytes));
+        assets.MapPut("/{id:int}", UpdateAsync)
+            .Accepts<UpdateAssetRequest>("application/json")
+            .WithMetadata(new RequestSizeLimitAttribute(MaxBodyBytes));
         return endpoints;
     }
 
@@ -45,6 +48,12 @@ internal static class AssetEndpoints
             : Failure(result);
     }
 
+    private static async Task<IResult> UpdateAsync(int id, UpdateAssetRequest body, AssetService assets, CancellationToken cancellationToken)
+    {
+        var result = await assets.UpdateAsync(id, body, cancellationToken);
+        return result is { Outcome: AssetWriteOutcome.Succeeded, Asset: { } asset } ? TypedResults.Ok(asset) : Failure(result);
+    }
+
     /// <summary>The response for a write that did not succeed.</summary>
     private static IResult Failure(AssetWriteResult result) => result.Outcome switch
     {
@@ -59,6 +68,11 @@ internal static class AssetEndpoints
                 ["code"] = "duplicate_value",
                 ["errors"] = ApiResults.CamelCaseKeys(result.Errors!),
             }),
+        AssetWriteOutcome.ConcurrencyConflict => ApiResults.Problem(
+            StatusCodes.Status409Conflict,
+            "Kayıt siz düzenlerken başka bir kullanıcı tarafından değiştirildi.",
+            "Değişiklikleriniz kaydedilmedi. Kaydı yeniden açıp güncel bilgiler üzerinde tekrar deneyin.",
+            "concurrency_conflict"),
         _ => AssetProblems.ForRule(result.RuleCode),
     };
 

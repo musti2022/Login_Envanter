@@ -10,6 +10,8 @@ public sealed class AssetAuthorizationTests
     {
         { "GET", "/api/assets" },
         { "GET", "/api/assets/1" },
+        { "POST", "/api/assets" },
+        { "PUT", "/api/assets/1" },
     };
 
     [Theory]

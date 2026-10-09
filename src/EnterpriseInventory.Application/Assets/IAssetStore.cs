@@ -14,4 +14,12 @@ public interface IAssetStore
     /// duplicate codes or serial numbers are refused with field errors.
     /// </summary>
     Task<AssetWriteResult> CreateAsync(AssetDraft draft, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Replaces the asset's fields with <paramref name="draft"/>, with one audit record per kind of change, in one
+    /// transaction. Refused with <see cref="AssetWriteOutcome.ConcurrencyConflict"/> when the asset is no longer
+    /// at <paramref name="rowVersion"/>, so nobody silently overwrites someone else's edit. Nothing to change,
+    /// nothing written.
+    /// </summary>
+    Task<AssetWriteResult> UpdateAsync(int id, AssetDraft draft, byte[] rowVersion, CancellationToken cancellationToken);
 }

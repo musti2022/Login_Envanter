@@ -13,7 +13,10 @@ public record SaveAssetRequest
 
     public string? AssetType { get; init; }
 
-    /// <summary>Optional when creating (<c>Available</c>); "Assigned" is only reached by assigning the asset.</summary>
+    /// <summary>
+    /// Optional when creating (<c>Available</c>), required when updating. "Assigned" is only reached by assigning
+    /// the asset; an update may send it back unchanged for an asset that is already assigned.
+    /// </summary>
     public string? Status { get; init; }
 
     public int? ModelId { get; init; }
@@ -65,9 +68,22 @@ public sealed record AssetDraft(
     private static string? Blank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }
 
-internal sealed class SaveAssetRequestValidator : AbstractValidator<SaveAssetRequest>
+/// <summary>
+/// Body of <c>PUT /api/assets/{id}</c>: every field of the asset, as it should be after the update, plus the
+/// <see cref="RowVersion"/> the caller read. Fields left out are cleared, except <see cref="SaveAssetRequest.Status"/>,
+/// which is required.
+/// </summary>
+public sealed record UpdateAssetRequest : SaveAssetRequest
 {
-    public SaveAssetRequestValidator()
+    /// <summary>The asset's <c>rowVersion</c> from the caller's last read; a stale one is refused with 409.</summary>
+    public string? RowVersion { get; init; }
+}
+
+/// <summary>Rules every asset write shares, whether it creates the asset or updates it.</summary>
+internal abstract class AssetFieldsValidator<T> : AbstractValidator<T>
+    where T : SaveAssetRequest
+{
+    protected AssetFieldsValidator()
     {
         RuleFor(r => r.AssetCode)
             .Cascade(CascadeMode.Stop)
@@ -80,13 +96,6 @@ internal sealed class SaveAssetRequestValidator : AbstractValidator<SaveAssetReq
             .Cascade(CascadeMode.Stop)
             .NotEmpty().WithMessage("Demirbaş türü zorunludur.")
             .Must(EnumNames.IsDefined<AssetType>).WithMessage("Demirbaş türü geçersiz.");
-
-        RuleFor(r => r.Status)
-            .Cascade(CascadeMode.Stop)
-            .Must(EnumNames.IsDefined<AssetStatus>).WithMessage("Durum geçersiz.")
-            .Must(status => EnumNames.Parse<AssetStatus>(status) != AssetStatus.Assigned)
-            .WithMessage("Zimmetli durumu yalnızca demirbaş zimmetlenerek verilir.")
-            .When(r => r.Status is not null);
 
         RuleFor(r => r.ModelId).NotNull().WithMessage("Model seçilmelidir.").GreaterThan(0).WithMessage("Model geçersiz.");
         RuleFor(r => r.CityId).NotNull().WithMessage("Şehir seçilmelidir.").GreaterThan(0).WithMessage("Şehir geçersiz.");
@@ -113,4 +122,34 @@ internal sealed class SaveAssetRequestValidator : AbstractValidator<SaveAssetReq
     private static int Trimmed(string? value) => value?.Trim().Length ?? 0;
 
     private static bool NoControlCharacters(string? value) => value is null || !value.Any(char.IsControl);
+}
+
+internal sealed class SaveAssetRequestValidator : AssetFieldsValidator<SaveAssetRequest>
+{
+    public SaveAssetRequestValidator()
+    {
+        RuleFor(r => r.Status)
+            .Cascade(CascadeMode.Stop)
+            .Must(EnumNames.IsDefined<AssetStatus>).WithMessage("Durum geçersiz.")
+            .Must(status => EnumNames.Parse<AssetStatus>(status) != AssetStatus.Assigned)
+            .WithMessage(AssetMessages.StatusAssignedOnlyByAssignment)
+            .When(r => r.Status is not null);
+    }
+}
+
+/// <summary>
+/// "Assigned" passes here: whether it is allowed depends on the asset (it is when the asset is already assigned),
+/// so <see cref="IAssetStore.UpdateAsync"/> checks it.
+/// </summary>
+internal sealed class UpdateAssetRequestValidator : AssetFieldsValidator<UpdateAssetRequest>
+{
+    public UpdateAssetRequestValidator()
+    {
+        RuleFor(r => r.Status)
+            .Cascade(CascadeMode.Stop)
+            .NotEmpty().WithMessage("Durum zorunludur.")
+            .Must(EnumNames.IsDefined<AssetStatus>).WithMessage("Durum geçersiz.");
+
+        RuleFor(r => r.RowVersion).MustBeRowVersion();
+    }
 }
