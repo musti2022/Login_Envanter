@@ -426,4 +426,158 @@ public class AssetTests
         Assert.IsNotType<List<AssetAssignment>>(asset.Assignments);
         Assert.Throws<NotSupportedException>(() => ((ICollection<AssetAssignment>)asset.Assignments).Clear());
     }
+
+    [Fact]
+    public void ChangeLocation_moves_to_another_city_keeping_the_department()
+    {
+        var asset = NewAsset();
+        var department = asset.Department;
+        var ankara = NewCity("Ankara");
+
+        var changed = asset.ChangeLocation(ankara, department, null);
+
+        Assert.True(changed);
+        Assert.Same(ankara, asset.City);
+        Assert.Same(department, asset.Department);
+    }
+
+    [Fact]
+    public void Keeping_a_since_deactivated_brand_department_or_location_is_allowed()
+    {
+        var city = NewCity();
+        var asset = NewAsset(city, Location.Create(city, "Depo"));
+        asset.Brand.Deactivate();
+        asset.Department.Deactivate();
+        asset.Location!.Deactivate();
+
+        asset.ChangeModel(asset.Model);
+        var changed = asset.ChangeLocation(NewCity("Ankara"), asset.Department, null);
+        Assert.True(changed);
+
+        var izmir = NewCity("İzmir");
+        var izmirLocation = Location.Create(izmir, "Alsancak");
+        asset.ChangeLocation(izmir, asset.Department, izmirLocation);
+        izmirLocation.Deactivate();
+        Assert.True(asset.ChangeLocation(izmir, NewDepartment("Satış"), asset.Location));
+    }
+
+    [Fact]
+    public void Saved_model_and_location_with_the_same_key_count_as_unchanged_even_if_deactivated()
+    {
+        var city = NewCity().WithId(1);
+        var asset = Asset.Create(
+            "DMR-1",
+            AssetType.Laptop,
+            AssetModel.Create(Brand.Create("Dell").WithId(3), "Latitude").WithId(4),
+            city,
+            NewDepartment().WithId(2),
+            Location.Create(city, "Depo").WithId(9));
+
+        var modelCopy = AssetModel.Create(Brand.Create("Dell").WithId(3), "Latitude").WithId(4);
+        modelCopy.Deactivate();
+        asset.ChangeModel(modelCopy);
+
+        var locationCopy = Location.Create(NewCity().WithId(1), "Depo").WithId(9);
+        locationCopy.Deactivate();
+        var changed = asset.ChangeLocation(NewCity().WithId(1), NewDepartment().WithId(2), locationCopy);
+
+        Assert.False(changed);
+        Assert.Equal(4, asset.ModelId);
+        Assert.Equal(9, asset.LocationId);
+    }
+
+    [Fact]
+    public void ChangeLocation_clears_a_location_whose_navigation_was_not_loaded()
+    {
+        var city = NewCity().WithId(1);
+        var department = NewDepartment().WithId(2);
+        var asset = Asset.Create("DMR-1", AssetType.Laptop, NewModel(), city, department)
+            .WithProperty(nameof(Asset.LocationId), 9);
+
+        var changed = asset.ChangeLocation(city, department, null);
+
+        Assert.True(changed);
+        Assert.Null(asset.LocationId);
+    }
+
+    [Fact]
+    public void Assign_rejects_a_start_before_the_previous_return()
+    {
+        var asset = NewAssignedAsset(out _);
+        asset.Return(TestData.Admin, Now.AddDays(10));
+
+        DomainAssert.Violates(DomainErrors.Asset.AssignmentOverlapsHistory, () =>
+            asset.Assign(NewEmployee(), null, null, TestData.Admin, Now.AddDays(5)));
+        Assert.Equal(AssetStatus.Available, asset.Status);
+        Assert.Single(asset.Assignments);
+    }
+
+    [Fact]
+    public void Assign_may_start_at_the_exact_time_of_the_previous_return()
+    {
+        var asset = NewAssignedAsset(out _);
+        asset.Return(TestData.Admin, Now.AddDays(10));
+
+        var next = asset.Assign(NewEmployee(), null, null, TestData.Admin, Now.AddDays(10));
+
+        Assert.Same(next, asset.ActiveAssignment);
+    }
+
+    [Fact]
+    public void Return_at_the_exact_assignment_time_is_allowed()
+    {
+        var asset = NewAssignedAsset(out var assignment);
+
+        asset.Return(TestData.Admin, Now);
+
+        Assert.Equal(Now, assignment.ReturnedAt);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(" ")]
+    public void Return_requires_the_returning_user_and_changes_nothing_without_it(string? returnedBy)
+    {
+        var asset = NewAssignedAsset(out var assignment);
+
+        DomainAssert.Violates(DomainErrors.Required, () => asset.Return(returnedBy!, Now.AddDays(1)));
+
+        Assert.True(assignment.IsActive);
+        Assert.Null(assignment.ReturnedBy);
+        Assert.Equal(AssetStatus.Assigned, asset.Status);
+    }
+
+    /// <summary>An asset loaded from the database without Include(a =&gt; a.Assignments).</summary>
+    private static Asset AssignedAssetWithoutLoadedAssignments() =>
+        NewAsset().WithProperty(nameof(Asset.Status), AssetStatus.Assigned);
+
+    [Fact]
+    public void Status_change_and_archive_are_blocked_for_an_assigned_asset_even_without_loaded_assignments()
+    {
+        var asset = AssignedAssetWithoutLoadedAssignments();
+
+        DomainAssert.Violates(DomainErrors.Asset.HasActiveAssignment, () => asset.ChangeStatus(AssetStatus.Faulty));
+        DomainAssert.Violates(DomainErrors.Asset.HasActiveAssignment, asset.Archive);
+        Assert.Equal(AssetStatus.Assigned, asset.Status);
+        Assert.False(asset.IsDeleted);
+    }
+
+    [Fact]
+    public void Return_fails_fast_when_assignments_were_not_loaded()
+    {
+        var asset = AssignedAssetWithoutLoadedAssignments();
+
+        Assert.Throws<InvalidOperationException>(() => asset.Return(TestData.Admin, Now));
+        Assert.Equal(AssetStatus.Assigned, asset.Status);
+    }
+
+    [Fact]
+    public void Assign_is_rejected_for_an_assigned_asset_even_without_loaded_assignments()
+    {
+        var asset = AssignedAssetWithoutLoadedAssignments();
+
+        DomainAssert.Violates(DomainErrors.Asset.NotAvailableForAssignment, () =>
+            asset.Assign(NewEmployee(), null, null, TestData.Admin, Now));
+        Assert.Empty(asset.Assignments);
+    }
 }

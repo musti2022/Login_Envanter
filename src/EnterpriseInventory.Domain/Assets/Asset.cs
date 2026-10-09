@@ -10,8 +10,10 @@ namespace EnterpriseInventory.Domain.Assets;
 /// assignment, its status follows the assignment flow, and archiving is a soft delete.
 /// </summary>
 /// <remarks>
-/// The in-memory rules here require <see cref="Assignments"/> to be loaded. The database enforces the
-/// same "one active assignment" rule with a filtered unique index, and <see cref="AuditableEntity.RowVersion"/>
+/// <see cref="Status"/> is the source of truth for "is assigned", so status changes and archiving are safe even
+/// when <see cref="Assignments"/> was not loaded. <see cref="Assign"/> and <see cref="Return"/> work on the
+/// assignment history and need it loaded; <see cref="Return"/> fails fast when it is not. The database
+/// enforces "one active assignment" with a filtered unique index, and <see cref="AuditableEntity.RowVersion"/>
 /// rejects concurrent edits.
 /// </remarks>
 public sealed class Asset : AuditableEntity
@@ -185,7 +187,7 @@ public sealed class Asset : AuditableEntity
             throw new DomainException(DomainErrors.Asset.StatusRequiresAssignmentFlow, "Use Assign to give the asset to an employee.");
         }
 
-        if (ActiveAssignment is not null)
+        if (IsAssigned)
         {
             throw new DomainException(DomainErrors.Asset.HasActiveAssignment, "Return the asset before changing its status.");
         }
@@ -218,6 +220,13 @@ public sealed class Asset : AuditableEntity
             throw new DomainException(DomainErrors.Employee.Inactive, "The employee's directory account is disabled.");
         }
 
+        // Periods must not overlap: the new holder cannot start before the previous holder returned the asset.
+        var lastReturnedAt = _assignments.Max(a => a.ReturnedAt);
+        if (assignedAt < lastReturnedAt)
+        {
+            throw new DomainException(DomainErrors.Asset.AssignmentOverlapsHistory, "The assignment time is earlier than the previous return.");
+        }
+
         var assignment = new AssetAssignment(this, employee, assignmentDescription, notes, assignedBy, assignedAt);
         _assignments.Add(assignment);
         Status = AssetStatus.Assigned;
@@ -229,8 +238,16 @@ public sealed class Asset : AuditableEntity
     {
         EnsureNotArchived();
 
-        var assignment = ActiveAssignment
-            ?? throw new DomainException(DomainErrors.Asset.NotAssigned, "The asset has no active assignment.");
+        var assignment = ActiveAssignment;
+        if (assignment is null)
+        {
+            if (Status == AssetStatus.Assigned)
+            {
+                throw new InvalidOperationException("The asset is assigned but its assignments were not loaded.");
+            }
+
+            throw new DomainException(DomainErrors.Asset.NotAssigned, "The asset has no active assignment.");
+        }
 
         assignment.Close(returnedBy, returnedAt);
         Status = AssetStatus.Available;
@@ -245,13 +262,16 @@ public sealed class Asset : AuditableEntity
             throw new DomainException(DomainErrors.Asset.AlreadyArchived, "The asset is already archived.");
         }
 
-        if (ActiveAssignment is not null)
+        if (IsAssigned)
         {
             throw new DomainException(DomainErrors.Asset.HasActiveAssignment, "Return the asset before archiving it.");
         }
 
         IsDeleted = true;
     }
+
+    /// <summary>True when the asset is assigned, whether or not its assignments were loaded.</summary>
+    private bool IsAssigned => Status == AssetStatus.Assigned || ActiveAssignment is not null;
 
     private void EnsureNotArchived()
     {

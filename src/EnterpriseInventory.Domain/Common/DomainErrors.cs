@@ -23,6 +23,7 @@ public static class DomainErrors
         public const string HasActiveAssignment = "Asset.HasActiveAssignment";
         public const string StatusRequiresAssignmentFlow = "Asset.StatusRequiresAssignmentFlow";
         public const string ReturnBeforeAssignment = "Asset.ReturnBeforeAssignment";
+        public const string AssignmentOverlapsHistory = "Asset.AssignmentOverlapsHistory";
         public const string InactiveReference = "Asset.InactiveReference";
         public const string LocationCityMismatch = "Asset.LocationCityMismatch";
     }

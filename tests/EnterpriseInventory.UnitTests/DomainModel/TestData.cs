@@ -41,6 +41,14 @@ internal static class TestData
         return asset;
     }
 
+    /// <summary>Sets a private property, the way EF Core materializes an entity from the database.</summary>
+    public static T WithProperty<T>(this T entity, string propertyName, object? value)
+        where T : class
+    {
+        typeof(T).GetProperty(propertyName)!.SetValue(entity, value);
+        return entity;
+    }
+
     /// <summary>Simulates a database-generated key, as EF Core would set after saving.</summary>
     public static T WithId<T>(this T entity, int id)
         where T : EnterpriseInventory.Domain.Common.Entity

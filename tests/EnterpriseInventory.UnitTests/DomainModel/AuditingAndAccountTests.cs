@@ -43,6 +43,17 @@ public class AuditableEntityTests
     }
 
     [Fact]
+    public void MarkUpdated_may_use_the_creation_time()
+    {
+        var asset = NewAsset();
+        asset.MarkCreated("creator", Now);
+
+        asset.MarkUpdated("creator", Now);
+
+        Assert.Equal(Now, asset.UpdatedAt);
+    }
+
+    [Fact]
     public void Audit_stamps_require_a_user()
     {
         var asset = NewAsset();
@@ -85,6 +96,18 @@ public class EmployeeTests
     }
 
     [Fact]
+    public void Blank_optional_profile_fields_are_stored_as_null_and_limited_in_length()
+    {
+        var employee = Employee.Create(Guid.NewGuid(), "ali.can", "Ali Can", "  ", " ", "", true, Now);
+
+        Assert.Null(employee.Email);
+        Assert.Null(employee.Department);
+        Assert.Null(employee.Title);
+        DomainAssert.Violates(DomainErrors.TooLong, () =>
+            employee.UpdateFromDirectory("ali.can", "Ali Can", new string('e', Employee.EmailMaxLength + 1), null, null, true, Now));
+    }
+
+    [Fact]
     public void UpdateFromDirectory_refreshes_profile_and_active_flag()
     {
         var employee = NewEmployee();
@@ -93,7 +116,9 @@ public class EmployeeTests
 
         Assert.Equal("ayse.demir", employee.SamAccountName);
         Assert.Equal("Ayşe Demir", employee.DisplayName);
+        Assert.Equal("ayse.demir@example.local", employee.Email);
         Assert.Equal("Finans", employee.Department);
+        Assert.Equal("Müdür", employee.Title);
         Assert.False(employee.IsActive);
         Assert.Equal(Now.AddDays(1), employee.LastSyncedAt);
     }
@@ -136,6 +161,26 @@ public class AdminUserTests
     }
 
     [Fact]
+    public void Create_requires_the_directory_object_guid_and_names()
+    {
+        DomainAssert.Violates(DomainErrors.Required, () => AdminUser.Create(Guid.Empty, "admin.user", "Admin", Now));
+        DomainAssert.Violates(DomainErrors.Required, () => AdminUser.Create(Guid.NewGuid(), " ", "Admin", Now));
+        DomainAssert.Violates(DomainErrors.Required, () => AdminUser.Create(Guid.NewGuid(), "admin.user", "", Now));
+    }
+
+    [Fact]
+    public void Rejected_login_update_leaves_the_record_unchanged()
+    {
+        var user = AdminUser.Create(Guid.NewGuid(), "admin.user", "Admin Kullanıcı", Now);
+
+        DomainAssert.Violates(DomainErrors.Required, () => user.RecordLogin("new.name", " ", Now.AddDays(1)));
+
+        Assert.Equal("admin.user", user.SamAccountName);
+        Assert.Equal("Admin Kullanıcı", user.DisplayName);
+        Assert.Equal(Now, user.LastLoginAt);
+    }
+
+    [Fact]
     public void Admin_users_and_employees_are_separate_types()
     {
         Assert.False(typeof(Employee).IsAssignableFrom(typeof(AdminUser)));
@@ -169,10 +214,25 @@ public class AuditLogTests
     }
 
     [Fact]
-    public void Create_needs_old_or_new_values()
+    public void Create_accepts_one_sided_values_for_creation_and_archiving()
+    {
+        var created = AuditLog.Create("Asset", "42", AuditAction.Created, null, "{\"AssetCode\":\"DMR-1\"}", "admin.user", Now, "corr-1");
+        var archived = AuditLog.Create("Asset", "42", AuditAction.Archived, "{\"IsDeleted\":false}", null, "admin.user", Now, "corr-2");
+
+        Assert.Null(created.OldValues);
+        Assert.NotNull(created.NewValues);
+        Assert.NotNull(archived.OldValues);
+        Assert.Null(archived.NewValues);
+    }
+
+    [Theory]
+    [InlineData(" ", null)]
+    [InlineData(null, "  ")]
+    [InlineData(null, null)]
+    public void Create_needs_old_or_new_values(string? oldValues, string? newValues)
     {
         DomainAssert.Violates(DomainErrors.Required, () =>
-            AuditLog.Create("Asset", "42", AuditAction.Updated, " ", null, "admin.user", Now, "corr-123"));
+            AuditLog.Create("Asset", "42", AuditAction.Updated, oldValues, newValues, "admin.user", Now, "corr-123"));
     }
 
     [Theory]
