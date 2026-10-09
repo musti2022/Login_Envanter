@@ -1,8 +1,11 @@
-# Canlı bildirimler (26. gün)
+# Canlı bildirimler (26–27. gün)
 
 Kod: `src/EnterpriseInventory.Api/Realtime`, `src/EnterpriseInventory.Api/Security/SessionCookieEvents.cs`,
-`src/EnterpriseInventory.Infrastructure/Identity/UserSessionService.cs` (`CheckAsync`). Testler:
-`tests/EnterpriseInventory.IntegrationTests/Realtime/InventoryHubTests.cs`.
+`src/EnterpriseInventory.Infrastructure/Identity/UserSessionService.cs` (`CheckAsync`),
+`src/EnterpriseInventory.Application/Assets/AssetChanges.cs`. Testler:
+`tests/EnterpriseInventory.IntegrationTests/Realtime/InventoryHubTests.cs`,
+`tests/EnterpriseInventory.IntegrationTests/Realtime/AssetEventTests.cs`,
+`tests/EnterpriseInventory.UnitTests/Assets/AssetChangePublisherTests.cs`.
 
 ## Hub: `/hubs/inventory`
 
@@ -49,12 +52,51 @@ Kod: `src/EnterpriseInventory.Api/Realtime`, `src/EnterpriseInventory.Api/Securi
 - İstek dışında yapılan bu kontrollerin logları ve audit kayıtları, her kontrol için üretilen bir correlation ID
   taşır (`BackgroundOperation`).
 
+## Demirbaş olayları (27. gün)
+
+| Olay | Ne zaman |
+| --- | --- |
+| `AssetCreated` | Yeni demirbaş kaydedildi |
+| `AssetUpdated` | Demirbaş düzenlendi (en az bir alan değişti) |
+| `AssetArchived` | Demirbaş arşivlendi |
+| `AssetAssigned` | Demirbaş zimmetlendi |
+| `AssetReturned` | Zimmet iade alındı |
+| `AssetLocationChanged` | Şehir, lokasyon veya departman değişti |
+
+- Her olay `{ assetId, occurredAt }` taşır; `occurredAt`, demirbaşın kayıttaki son güncelleme zamanıdır (yeni
+  kayıtta oluşturulma zamanı).
+- **Yalnızca commit sonrası:** olay, işlem ve audit kaydı aynı transaction'da commit edildikten sonra, servis
+  katmanında (`AssetChangePublisher`) yayımlanır. Transaction geri alınırsa (ör. audit kaydı yazılamazsa) istek
+  hata ile biter ve olay hiç yayımlanmaz.
+- Reddedilen işlemler (doğrulama hatası, `409` çakışma, iş kuralı, bulunamayan kayıt, AD'ye ulaşılamaması) ve
+  hiçbir şeyi değiştirmeyen kayıtlar (aynı değerlerle düzenleme, aynı yere taşıma) olay üretmez. Hiçbir şey
+  yazılmadığı RowVersion'ın değişmemesinden anlaşılır.
+- **Bildirim hatası commit'i geri almaz:** istek olayı yalnızca bellekteki bir kuyruğa bırakır ve döner; gönderim
+  arka planda yapılır (`AssetChangeBroadcaster`). Kuyruğa bırakma bile hata verirse hata loglanır, istemci başarılı
+  cevabı alır; veri ve audit kaydı yerinde kalır. Gönderim hataları da yalnızca loglanır.
+- Kuyruk 1.000 olayla sınırlıdır; dolarsa yeni olaylar atılır ve uyarı loglanır, istek beklemez.
+- Olaylar her bağlantıya, verildiği sırayla gider. Bağlantıların hepsi aynı yetkiye sahip yöneticilere ait olduğu
+  için olaylar herkese gönderilir; ileride farklı okuma yetkileri eklenirse SignalR grupları kullanılmalıdır.
+- Olaylar yalnızca bir ipucudur: ekran güncel veriyi API'den okur (28. gün). Kaçan bir olay (ör. süreç commit ile
+  gönderim arasında durursa) veri kaybı değildir; ekran yeniden bağlanınca veya yenilenince eşitlenir (29. gün).
+
 ## Birden fazla sunucu
 
-Açık bağlantıların listesi (`HubConnectionRegistry`) her sunucunun kendi belleğindedir. Çıkış, isteği karşılayan
-sunucudaki bağlantıları hemen kapatır; diğer sunuculardaki bağlantılar, oturum veritabanında bittiği için bir
-sonraki kontrolde kapanır. Bildirimlerin tüm sunuculardaki bağlantılara ulaşması için ise bir backplane veya
-outbox gerekir; bkz. 27. gün notları.
+Açık bağlantıların listesi (`HubConnectionRegistry`) ve olay kuyruğu her sunucunun kendi belleğindedir. Çıkış,
+isteği karşılayan sunucudaki bağlantıları hemen kapatır; diğer sunuculardaki bağlantılar, oturum veritabanında
+bittiği için bir sonraki kontrolde kapanır. Olaylar ise yalnızca değişikliği yapan sunucudaki bağlantılara gider.
+
+Uygulama tek IIS sunucusunda çalışacak şekilde tasarlandı. Birden fazla sunucu (web farm) gündeme gelirse
+seçenekler:
+
+1. **SignalR backplane** (ör. Redis): her sunucunun olayları diğerlerine iletilir. Olaylar yine bellekten
+   gönderildiği için süreç durursa kaybolabilir; ekranlar yeniden bağlanınca eşitlenir.
+2. **Outbox tablosu:** olay, değişiklikle aynı transaction'da bir `OutboxMessages` tablosuna yazılır; her sunucuda
+   çalışan bir arka plan işi tabloyu okuyup kendi bağlantılarına gönderir. Kayıp olmaz, sunucu sayısından
+   bağımsızdır; bedeli ek tablo, temizlik işi ve birkaç saniyelik gecikmedir.
+
+Olaylar yalnızca ipucu olduğu ve ekranlar her yeniden bağlantıda tam eşitlendiği için tek sunucuda outbox
+kullanılmadı.
 
 ## IIS
 
@@ -83,5 +125,13 @@ Events'e veya Long Polling'e düşer; bağlantı çalışır ama daha fazla iste
 | `A_connection_is_closed_when_the_directory_takes_the_users_access_away` | AD erişimi kaldırınca bağlantı kapanır; audit `system` adına ve correlation ID ile |
 | `A_short_directory_outage_does_not_close_the_connection` | AD'ye kısa süre ulaşılamaması bağlantıyı kapatmaz |
 
-Testler gerçek SQL Server ve test saatiyle çalışır; AD, cevabını her testin belirlediği bir test dublörüdür (gerçek
-AD kontrolü `SambaAccessCheckTests` içindedir).
+| `Every_kind_of_change_is_announced_once_it_is_committed` | Altı olayın her biri doğru demirbaş ve zamanla gelir; olay geldiği anda kilit beklemeyen bir okuma değişikliği ve audit kaydını commit edilmiş görür |
+| `Every_open_connection_hears_of_a_change_made_by_another_administrator` | Bir yöneticinin değişikliğini başka yöneticinin iki sekmesi de duyar |
+| `Refused_and_unchanged_writes_are_not_announced` | `409`, `400`, `404`, kural ihlali ve değişiklik içermeyen kayıtlar olay üretmez |
+| `A_change_that_is_rolled_back_is_not_announced` | Audit kaydı yazılamayıp geri alınan taşıma olay üretmez |
+| `A_failing_notifier_neither_fails_nor_undoes_a_committed_change` | Bildirim katmanı hata verse de istek başarılı, veri ve audit kaydı yerinde |
+| `AssetChangePublisherTests` (birim) | Yalnızca başarılı ve bir şey değiştiren yazmalar yayımlanır; bildirim hatası loglanır, sonuç değişmez |
+
+Testler gerçek SQL Server ile çalışır. 26. gün testlerinde saat bir test saatidir ve AD, cevabını her testin
+belirlediği bir test dublörüdür (gerçek AD kontrolü `SambaAccessCheckTests` içindedir); 27. gün testlerinde
+yöneticiler Development sahte dizini ile gerçek giriş çereziyle oturum açar.

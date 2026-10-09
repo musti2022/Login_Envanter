@@ -4,6 +4,7 @@ using EnterpriseInventory.Application.Employees;
 using EnterpriseInventory.Domain.Common;
 using FluentValidation;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace EnterpriseInventory.UnitTests.Assets;
 
@@ -81,7 +82,8 @@ public class AssetAssignmentServiceTests
             services.GetRequiredService<IValidator<ReturnAssetRequest>>(),
             services.GetRequiredService<IValidator<AssetAssignmentsRequest>>(),
             _directory,
-            _store);
+            _store,
+            new AssetChangePublisher(new NoAssetChangeNotifier(), NullLogger<AssetChangePublisher>.Instance));
     }
 
     private sealed class ScriptedDirectory : IEmployeeDirectory

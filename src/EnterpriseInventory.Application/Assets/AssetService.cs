@@ -8,7 +8,10 @@ public sealed record AssetListResult(PagedResult<AssetListItem>? Page, IDictiona
     public bool IsValid => Page is not null;
 }
 
-/// <summary>Inventory use cases: checks the caller's input and hands it to <see cref="IAssetStore"/>.</summary>
+/// <summary>
+/// Inventory use cases: checks the caller's input, hands it to <see cref="IAssetStore"/> and announces committed
+/// changes (<see cref="AssetChangePublisher"/>).
+/// </summary>
 public sealed class AssetService(
     IValidator<AssetListRequest> listValidator,
     IValidator<SaveAssetRequest> saveValidator,
@@ -16,7 +19,8 @@ public sealed class AssetService(
     IValidator<ArchiveAssetRequest> archiveValidator,
     IValidator<AssetHistoryRequest> historyValidator,
     IValidator<ChangeAssetLocationRequest> locationValidator,
-    IAssetStore store)
+    IAssetStore store,
+    AssetChangePublisher changes)
 {
     public async Task<AssetListResult> ListAsync(AssetListRequest request, CancellationToken cancellationToken)
     {
@@ -39,7 +43,7 @@ public sealed class AssetService(
 
         var validation = await saveValidator.ValidateAsync(request, cancellationToken).ConfigureAwait(false);
         return validation.IsValid
-            ? await store.CreateAsync(AssetDraft.From(request), cancellationToken).ConfigureAwait(false)
+            ? changes.Announce(AssetChange.Created, await store.CreateAsync(AssetDraft.From(request), cancellationToken).ConfigureAwait(false))
             : AssetWriteResult.Invalid(validation.ToDictionary());
     }
 
@@ -49,7 +53,10 @@ public sealed class AssetService(
 
         var validation = await updateValidator.ValidateAsync(request, cancellationToken).ConfigureAwait(false);
         return validation.IsValid
-            ? await store.UpdateAsync(id, AssetDraft.From(request), AssetRowVersion.Decode(request.RowVersion), cancellationToken).ConfigureAwait(false)
+            ? changes.Announce(
+                AssetChange.Updated,
+                await store.UpdateAsync(id, AssetDraft.From(request), AssetRowVersion.Decode(request.RowVersion), cancellationToken).ConfigureAwait(false),
+                request.RowVersion)
             : AssetWriteResult.Invalid(validation.ToDictionary());
     }
 
@@ -59,12 +66,15 @@ public sealed class AssetService(
 
         var validation = await locationValidator.ValidateAsync(request, cancellationToken).ConfigureAwait(false);
         return validation.IsValid
-            ? await store.ChangeLocationAsync(
-                    id,
-                    new AssetPlacement(request.CityId!.Value, request.DepartmentId!.Value, request.LocationId),
-                    AssetRowVersion.Decode(request.RowVersion),
-                    cancellationToken)
-                .ConfigureAwait(false)
+            ? changes.Announce(
+                AssetChange.LocationChanged,
+                await store.ChangeLocationAsync(
+                        id,
+                        new AssetPlacement(request.CityId!.Value, request.DepartmentId!.Value, request.LocationId),
+                        AssetRowVersion.Decode(request.RowVersion),
+                        cancellationToken)
+                    .ConfigureAwait(false),
+                request.RowVersion)
             : AssetWriteResult.Invalid(validation.ToDictionary());
     }
 
@@ -74,7 +84,10 @@ public sealed class AssetService(
 
         var validation = await archiveValidator.ValidateAsync(request, cancellationToken).ConfigureAwait(false);
         return validation.IsValid
-            ? await store.ArchiveAsync(id, AssetRowVersion.Decode(request.RowVersion), cancellationToken).ConfigureAwait(false)
+            ? changes.Announce(
+                AssetChange.Archived,
+                await store.ArchiveAsync(id, AssetRowVersion.Decode(request.RowVersion), cancellationToken).ConfigureAwait(false),
+                request.RowVersion)
             : AssetWriteResult.Invalid(validation.ToDictionary());
     }
 

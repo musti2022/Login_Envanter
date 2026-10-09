@@ -1,4 +1,5 @@
 using EnterpriseInventory.Api.Security;
+using EnterpriseInventory.Application.Assets;
 
 namespace EnterpriseInventory.Api.Realtime;
 
@@ -22,6 +23,11 @@ internal static class RealtimeSetup
         });
         services.AddSingleton<HubConnectionRegistry>();
         services.AddHostedService<HubSessionMonitor>();
+
+        // One instance both receives the committed changes and sends them in the background.
+        services.AddSingleton<AssetChangeBroadcaster>();
+        services.AddSingleton<IAssetChangeNotifier>(provider => provider.GetRequiredService<AssetChangeBroadcaster>());
+        services.AddHostedService(provider => provider.GetRequiredService<AssetChangeBroadcaster>());
 
         return services;
     }

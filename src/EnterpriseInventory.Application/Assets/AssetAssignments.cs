@@ -130,7 +130,8 @@ public sealed class AssetAssignmentService(
     IValidator<ReturnAssetRequest> returnValidator,
     IValidator<AssetAssignmentsRequest> listValidator,
     IEmployeeDirectory directory,
-    IAssetAssignmentStore store)
+    IAssetAssignmentStore store,
+    AssetChangePublisher changes)
 {
     public const int DefaultPageSize = 50;
 
@@ -162,7 +163,8 @@ public sealed class AssetAssignmentService(
         }
 
         var draft = new AssignmentDraft(found.Person, request.AssignmentDescription!.Trim(), string.IsNullOrWhiteSpace(request.Notes) ? null : request.Notes.Trim());
-        return await store.AssignAsync(assetId, draft, AssetRowVersion.Decode(request.RowVersion), cancellationToken).ConfigureAwait(false);
+        var result = await store.AssignAsync(assetId, draft, AssetRowVersion.Decode(request.RowVersion), cancellationToken).ConfigureAwait(false);
+        return changes.Announce(AssetChange.Assigned, result, request.RowVersion);
     }
 
     public async Task<AssetWriteResult> ReturnAsync(int assetId, ReturnAssetRequest request, CancellationToken cancellationToken)
@@ -171,7 +173,10 @@ public sealed class AssetAssignmentService(
 
         var validation = await returnValidator.ValidateAsync(request, cancellationToken).ConfigureAwait(false);
         return validation.IsValid
-            ? await store.ReturnAsync(assetId, AssetRowVersion.Decode(request.RowVersion), cancellationToken).ConfigureAwait(false)
+            ? changes.Announce(
+                AssetChange.Returned,
+                await store.ReturnAsync(assetId, AssetRowVersion.Decode(request.RowVersion), cancellationToken).ConfigureAwait(false),
+                request.RowVersion)
             : AssetWriteResult.Invalid(validation.ToDictionary());
     }
 

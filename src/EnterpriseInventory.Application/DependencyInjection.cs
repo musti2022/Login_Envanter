@@ -4,6 +4,7 @@ using EnterpriseInventory.Application.Employees;
 using EnterpriseInventory.Application.Lookups;
 using FluentValidation;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace EnterpriseInventory.Application;
 
@@ -14,6 +15,8 @@ public static class DependencyInjection
         services.AddValidatorsFromAssembly(typeof(DependencyInjection).Assembly, includeInternalTypes: true);
         services.AddScoped<SignInHandler>();
         services.AddScoped<AssetService>();
+        services.AddScoped<AssetChangePublisher>();
+        services.TryAddSingleton<IAssetChangeNotifier, NoAssetChangeNotifier>();
         services.AddScoped<AssetAssignmentService>();
         services.AddScoped<LookupService>();
         services.AddScoped<EmployeeService>();
