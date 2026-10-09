@@ -2,10 +2,12 @@ using EnterpriseInventory.Application.Abstractions;
 using EnterpriseInventory.Application.Assets;
 using EnterpriseInventory.Application.Authentication;
 using EnterpriseInventory.Application.Dashboard;
+using EnterpriseInventory.Application.Lookups;
 using EnterpriseInventory.Infrastructure.ActiveDirectory;
 using EnterpriseInventory.Infrastructure.Assets;
 using EnterpriseInventory.Infrastructure.Dashboard;
 using EnterpriseInventory.Infrastructure.Identity;
+using EnterpriseInventory.Infrastructure.Lookups;
 using EnterpriseInventory.Infrastructure.Persistence;
 using EnterpriseInventory.Infrastructure.Persistence.Interceptors;
 using Microsoft.EntityFrameworkCore;
@@ -34,6 +36,7 @@ public static class DependencyInjection
         services.AddScoped<IUserSessionService, UserSessionService>();
         services.AddScoped<IAssetStore, AssetStore>();
         services.AddScoped<IDashboardStore, DashboardStore>();
+        services.AddScoped<ILookupStore, LookupStore>();
         services.AddDbContext<ApplicationDbContext>((serviceProvider, options) =>
         {
             var connectionString = configuration.GetConnectionString(ConnectionStringName);

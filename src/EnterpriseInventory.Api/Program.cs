@@ -5,6 +5,7 @@ using EnterpriseInventory.Api.Auth;
 using EnterpriseInventory.Api.Dashboard;
 using EnterpriseInventory.Api.Health;
 using EnterpriseInventory.Api.Http;
+using EnterpriseInventory.Api.Lookups;
 using EnterpriseInventory.Api.Security;
 using EnterpriseInventory.Application;
 using EnterpriseInventory.Application.Abstractions;
@@ -76,6 +77,7 @@ try
     app.MapAuthEndpoints();
     app.MapAssetEndpoints();
     app.MapDashboardEndpoints();
+    app.MapLookupEndpoints();
 
     await app.RunAsync();
 }

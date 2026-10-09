@@ -6,10 +6,11 @@ import { PageHeader } from '../components/PageHeader'
 import { EmptyState } from '../components/states/EmptyState'
 import { ErrorState } from '../components/states/ErrorState'
 import { LoadingState } from '../components/states/LoadingState'
+import { AssetFilters } from '../inventory/AssetFilters'
 import { AssetTable } from '../inventory/AssetTable'
 import { assetsQueryKey, fetchAssets, toQueryString, type AssetListParams, type SortField } from '../inventory/assetsApi'
 import { ColumnMenu } from '../inventory/ColumnMenu'
-import { parseListParams } from '../inventory/listParams'
+import { activeFilterCount, clearedFilters, parseListParams } from '../inventory/listParams'
 
 export function InventoryPage() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -22,7 +23,10 @@ export function InventoryPage() {
     placeholderData: keepPreviousData,
   })
 
-  const update = (changes: Partial<AssetListParams>) => setSearchParams(toQueryString({ ...params, ...changes }))
+  // Built on the address as it is when applied, so a change made while another is pending (the search waits
+  // for typing to stop) never undoes it.
+  const update = (changes: Partial<AssetListParams>, options?: { replace?: boolean }) =>
+    setSearchParams((current) => toQueryString({ ...parseListParams(current), ...changes }), options)
 
   const sort = (sortBy: SortField) =>
     update({
@@ -39,6 +43,7 @@ export function InventoryPage() {
         actions={<ColumnMenu hidden={hiddenColumns} onChange={setHiddenColumns} />}
       />
       <Card>
+        <AssetFilters params={params} onChange={update} />
         <Box sx={{ height: 4 }}>{assets.isFetching && !assets.isPending && <LinearProgress aria-label="Liste yenileniyor" />}</Box>
         {assets.isPending ? (
           <LoadingState message="Demirbaşlar yükleniyor..." />
@@ -50,6 +55,16 @@ export function InventoryPage() {
               onRetry={() => void assets.refetch()}
             />
           </Box>
+        ) : assets.data.totalCount === 0 && activeFilterCount(params) > 0 ? (
+          <EmptyState
+            title="Filtrelerle eşleşen demirbaş yok"
+            description="Aramayı veya filtreleri değiştirip tekrar deneyin."
+            action={
+              <Button variant="contained" onClick={() => update(clearedFilters)}>
+                Filtreleri temizle
+              </Button>
+            }
+          />
         ) : assets.data.totalCount === 0 ? (
           <EmptyState title="Henüz demirbaş yok" description="Envantere eklenen demirbaşlar burada listelenir." />
         ) : assets.data.items.length === 0 ? (

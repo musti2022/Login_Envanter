@@ -1,5 +1,5 @@
 import { defaultListParams, toQueryString } from './assetsApi'
-import { parseListParams } from './listParams'
+import { activeFilterCount, clearedFilters, parseListParams } from './listParams'
 
 describe('inventory list parameters', () => {
   it('leave defaults out of the address and the API request', () => {
@@ -17,14 +17,17 @@ describe('inventory list parameters', () => {
       status: ['Faulty' as const, 'Retired' as const],
       assetType: ['Laptop' as const],
       brandId: 4,
+      modelId: 12,
       cityId: 7,
+      locationId: 30,
+      departmentId: 2,
       archived: true,
     }
 
     const query = toQueryString(params)
 
     expect(query).toBe(
-      'search=dell+izmir&status=Faulty&status=Retired&assetType=Laptop&brandId=4&cityId=7&archived=true&sortBy=cityName&sortDirection=desc&page=3&pageSize=50',
+      'search=dell+izmir&status=Faulty&status=Retired&assetType=Laptop&brandId=4&modelId=12&cityId=7&departmentId=2&locationId=30&archived=true&sortBy=cityName&sortDirection=desc&page=3&pageSize=50',
     )
     expect(parseListParams(new URLSearchParams(query))).toEqual(params)
   })
@@ -42,5 +45,22 @@ describe('inventory list parameters', () => {
 
     expect(params.status).toEqual(['Faulty'])
     expect(toQueryString(params)).toBe('search=dell&status=Faulty')
+  })
+
+  it('apply a model only with its brand and a location only with its city', () => {
+    const params = parseListParams(new URLSearchParams('modelId=12&locationId=30&departmentId=2'))
+
+    expect(params).toEqual({ ...defaultListParams, departmentId: 2 })
+  })
+
+  it('count the filters that are on and clear them without touching sorting or page size', () => {
+    const params = parseListParams(
+      new URLSearchParams('search=dell&status=Faulty&brandId=4&modelId=12&archived=true&sortBy=cityName&pageSize=50&page=3'),
+    )
+
+    expect(activeFilterCount(params)).toBe(5)
+    const cleared = { ...params, ...clearedFilters }
+    expect(activeFilterCount(cleared)).toBe(0)
+    expect(toQueryString(cleared)).toBe('sortBy=cityName&pageSize=50')
   })
 })
