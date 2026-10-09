@@ -5,6 +5,7 @@ import { useState } from 'react'
 import { Outlet } from 'react-router'
 import { brandColors } from '../app/theme'
 import { SidebarContent } from './SidebarContent'
+import { UserMenu } from './UserMenu'
 
 export const drawerWidth = 260
 
@@ -61,6 +62,7 @@ export function AppLayout() {
           <Typography variant="h6" component="div" color="primary" noWrap sx={{ fontWeight: 600 }}>
             Kurumsal Envanter Yönetim Sistemi
           </Typography>
+          <UserMenu />
         </Toolbar>
       </AppBar>
 

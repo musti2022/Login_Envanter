@@ -4,13 +4,13 @@
 üzerinden LDAPS ile yapılır ve yalnızca `Bim_Envanter` güvenlik grubunun üyeleri uygulamaya girebilir.
 Proje gereksinimleri ve 40 günlük plan: [`proje_talimatlari.md`](proje_talimatlari.md).
 
-> **Durum:** 9. gün — solution iskeleti, Türkçe arayüz kabuğu, domain modeli, SQL Server şeması (EF Core migration,
+> **Durum:** 10. gün — solution iskeleti, Türkçe arayüz kabuğu, domain modeli, SQL Server şeması (EF Core migration,
 > RowVersion, kısıtlar), API altyapısı (health endpoint'leri, varsayılan olarak kapalı yetkilendirme, hata yanıtları,
 > güvenlik başlıkları, rate limiting), Active Directory LDAPS bağlantısı (sıkı TLS sertifika doğrulaması), giriş API'si
 > (AD parola doğrulaması, `Bim_Envanter` grup SID kontrolü, giriş audit kaydı) ve oturum güvenliği (sunucu taraflı
 > oturum, CSRF koruması, çıkış, boşta kalma ve mutlak süre, açık oturumların AD'de düzenli yeniden kontrolü, kalıcı
-> Data Protection anahtarları). AD entegrasyonu Samba test domain'i ile test edildi; şirketin gerçek AD'si ile henüz
-> denenmedi. Giriş ekranı, envanter ve zimmet ekranları henüz yok.
+> Data Protection anahtarları) ve Türkçe giriş ekranı ile korumalı sayfalar. AD entegrasyonu Samba test domain'i ile
+> test edildi; şirketin gerçek AD'si ile henüz denenmedi. Envanter ve zimmet ekranları henüz yok.
 
 ## Teknolojiler
 
@@ -43,7 +43,8 @@ Katman bağımlılık kuralları için bkz. [`docs/architecture.md`](docs/archit
 komutları ve SQL hesap yetkileri için [`docs/database.md`](docs/database.md); health endpoint'leri, yetkilendirme, hata
 yanıtları, güvenlik başlıkları ve giriş API'si için [`docs/api.md`](docs/api.md); Active Directory LDAPS bağlantısı,
 sertifika doğrulaması, giriş akışı ve grup yetkisi için [`docs/active-directory.md`](docs/active-directory.md); oturum,
-CSRF, çıkış ve zaman aşımı kuralları için [`docs/session-security.md`](docs/session-security.md).
+CSRF, çıkış ve zaman aşımı kuralları için [`docs/session-security.md`](docs/session-security.md); giriş ekranı ve
+korumalı sayfalar için [`docs/web-auth.md`](docs/web-auth.md).
 
 ## Gereksinimler
 
@@ -65,6 +66,7 @@ npm ci
 npm run build
 npm test
 npm run lint
+npm run test:e2e   # tarayıcı testleri; hazırlık: src/EnterpriseInventory.Web/e2e/README.md
 ```
 
 SQL Server testleri `EI_TEST_SQL_CONNECTION` tanımlı değilse atlanır (skipped). Bir test sunucusunda geçici bir
@@ -86,6 +88,10 @@ npm run dev                                                               # /api
 
 API ayaktaysa `https://localhost:7261/api/health/live` `Healthy` döner; `.../api/health/ready` veritabanı bağlantısı ve
 migration durumunu da kontrol eder (bkz. [`docs/api.md`](docs/api.md#health-endpointleri)).
+
+Giriş ekranı `http://localhost:5173/giris` adresindedir. Geliştirmede giriş için sahte dizin kullanıcıları
+`user-secrets` ile tanımlanır ([ayrıntı](docs/active-directory.md#geliştirme-ortamı-sahte-dizin)) ve
+`ConnectionStrings:DefaultConnection` veritabanında migration'lar uygulanmış olmalıdır.
 
 Vite proxy'si API'nin HTTPS sertifikasını doğrular (`secure: true`); doğrulama kapatılmaz. Node.js işletim
 sisteminin sertifika deposunu varsayılan olarak kullanmadığı için ASP.NET Core geliştirme sertifikasını

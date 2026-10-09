@@ -10,7 +10,7 @@ describe('RouteErrorPage', () => {
   it('shows a Turkish error without leaking technical details', () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
 
-    renderWithRouter('/', [{ path: '/', element: <Broken />, errorElement: <RouteErrorPage /> }])
+    renderWithRouter('/', { routes: [{ path: '/', element: <Broken />, errorElement: <RouteErrorPage /> }] })
 
     expect(screen.getByRole('alert')).toHaveTextContent('Sayfa görüntülenemedi')
     expect(screen.getByRole('button', { name: 'Tekrar dene' })).toBeInTheDocument()
