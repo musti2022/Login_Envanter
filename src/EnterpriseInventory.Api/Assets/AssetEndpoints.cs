@@ -27,6 +27,10 @@ internal static class AssetEndpoints
         assets.MapPut("/{id:int}", UpdateAsync)
             .Accepts<UpdateAssetRequest>("application/json")
             .WithMetadata(new RequestSizeLimitAttribute(MaxBodyBytes));
+
+        // Archives: the asset is soft-deleted and keeps its history (see IAssetStore.ArchiveAsync).
+        assets.MapDelete("/{id:int}", ArchiveAsync);
+        assets.MapGet("/{id:int}/history", HistoryAsync);
         return endpoints;
     }
 
@@ -52,6 +56,24 @@ internal static class AssetEndpoints
     {
         var result = await assets.UpdateAsync(id, body, cancellationToken);
         return result is { Outcome: AssetWriteOutcome.Succeeded, Asset: { } asset } ? TypedResults.Ok(asset) : Failure(result);
+    }
+
+    private static async Task<IResult> ArchiveAsync(int id, [AsParameters] ArchiveAssetRequest request, AssetService assets, CancellationToken cancellationToken)
+    {
+        var result = await assets.ArchiveAsync(id, request, cancellationToken);
+        return result.Outcome == AssetWriteOutcome.Succeeded ? TypedResults.NoContent() : Failure(result);
+    }
+
+    private static async Task<Results<Ok<PagedResult<AssetHistoryEntry>>, ValidationProblem, ProblemHttpResult>> HistoryAsync(
+        int id, [AsParameters] AssetHistoryRequest request, AssetService assets, CancellationToken cancellationToken)
+    {
+        var result = await assets.HistoryAsync(id, request, cancellationToken);
+        return result switch
+        {
+            { Page: { } page } => TypedResults.Ok(page),
+            { Errors: { } errors } => ApiResults.ValidationProblem(errors),
+            _ => NotFound(),
+        };
     }
 
     /// <summary>The response for a write that did not succeed.</summary>

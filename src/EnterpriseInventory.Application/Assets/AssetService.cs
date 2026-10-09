@@ -13,6 +13,8 @@ public sealed class AssetService(
     IValidator<AssetListRequest> listValidator,
     IValidator<SaveAssetRequest> saveValidator,
     IValidator<UpdateAssetRequest> updateValidator,
+    IValidator<ArchiveAssetRequest> archiveValidator,
+    IValidator<AssetHistoryRequest> historyValidator,
     IAssetStore store)
 {
     public async Task<AssetListResult> ListAsync(AssetListRequest request, CancellationToken cancellationToken)
@@ -49,5 +51,30 @@ public sealed class AssetService(
         return validation.IsValid
             ? await store.UpdateAsync(id, AssetDraft.From(request), AssetRowVersion.Decode(request.RowVersion), cancellationToken).ConfigureAwait(false)
             : AssetWriteResult.Invalid(validation.ToDictionary());
+    }
+
+    public async Task<AssetWriteResult> ArchiveAsync(int id, ArchiveAssetRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var validation = await archiveValidator.ValidateAsync(request, cancellationToken).ConfigureAwait(false);
+        return validation.IsValid
+            ? await store.ArchiveAsync(id, AssetRowVersion.Decode(request.RowVersion), cancellationToken).ConfigureAwait(false)
+            : AssetWriteResult.Invalid(validation.ToDictionary());
+    }
+
+    public async Task<AssetHistoryResult> HistoryAsync(int id, AssetHistoryRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var validation = await historyValidator.ValidateAsync(request, cancellationToken).ConfigureAwait(false);
+        if (!validation.IsValid)
+        {
+            return new AssetHistoryResult(null, validation.ToDictionary());
+        }
+
+        var page = await store.HistoryAsync(id, request.Page ?? 1, request.PageSize ?? AssetHistoryRequest.DefaultPageSize, cancellationToken)
+            .ConfigureAwait(false);
+        return new AssetHistoryResult(page, null);
     }
 }

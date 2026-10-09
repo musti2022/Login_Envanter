@@ -22,4 +22,14 @@ public interface IAssetStore
     /// nothing written.
     /// </summary>
     Task<AssetWriteResult> UpdateAsync(int id, AssetDraft draft, byte[] rowVersion, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Archives (soft-deletes) the asset with an <c>Archived</c> audit record. The row, its assignment history and
+    /// its audit records stay; the asset leaves the inventory list but can still be read. Same version check as
+    /// <see cref="UpdateAsync"/>.
+    /// </summary>
+    Task<AssetWriteResult> ArchiveAsync(int id, byte[] rowVersion, CancellationToken cancellationToken);
+
+    /// <summary>The asset's audit records, newest first, or <c>null</c> when there is no asset with that ID.</summary>
+    Task<PagedResult<AssetHistoryEntry>?> HistoryAsync(int id, int page, int pageSize, CancellationToken cancellationToken);
 }

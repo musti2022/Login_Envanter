@@ -81,4 +81,16 @@ internal static class AssetAuditTrail
     }
 
     public static string Serialize(Dictionary<string, object?> values) => JsonSerializer.Serialize(values, Json);
+
+    /// <summary>Stored values back as JSON, for the history; <c>null</c> stays <c>null</c>.</summary>
+    public static JsonElement? Parse(string? values)
+    {
+        if (values is null)
+        {
+            return null;
+        }
+
+        using var document = JsonDocument.Parse(values);
+        return document.RootElement.Clone();
+    }
 }

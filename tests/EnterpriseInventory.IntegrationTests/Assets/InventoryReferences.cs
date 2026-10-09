@@ -1,6 +1,8 @@
+using EnterpriseInventory.Domain.Assets;
 using EnterpriseInventory.Domain.Catalog;
 using EnterpriseInventory.Domain.Organization;
 using EnterpriseInventory.IntegrationTests.Persistence;
+using Microsoft.EntityFrameworkCore;
 
 namespace EnterpriseInventory.IntegrationTests.Assets;
 
@@ -94,4 +96,28 @@ internal sealed record InventoryReferences(
         ["serialNumber"] = PersistenceTestData.Unique("SN"),
         ["description"] = "Test demirbaşı",
     };
+
+    /// <summary>
+    /// Saves an asset on the active lookups straight to the database after <paramref name="prepare"/> (assigning or
+    /// archiving it, which the API cannot do yet) and returns its ID. No audit record is written.
+    /// </summary>
+    public async Task<int> SaveAssetAsync(SqlServerDatabaseFixture fixture, Action<Asset> prepare)
+    {
+        ArgumentNullException.ThrowIfNull(fixture);
+        ArgumentNullException.ThrowIfNull(prepare);
+
+        await using var db = fixture.CreateContext();
+        var asset = Asset.Create(
+            PersistenceTestData.Unique("DMR")[..30],
+            AssetType.Desktop,
+            await db.AssetModels.Include(m => m.Brand).SingleAsync(m => m.Id == ModelId),
+            await db.Cities.SingleAsync(c => c.Id == CityId),
+            await db.Departments.SingleAsync(d => d.Id == DepartmentId),
+            computerName: "PC-SEED",
+            serialNumber: PersistenceTestData.Unique("SN"));
+        prepare(asset);
+        db.Add(asset);
+        await db.SaveChangesAsync();
+        return asset.Id;
+    }
 }

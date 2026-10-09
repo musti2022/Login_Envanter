@@ -1,3 +1,4 @@
+using System.Globalization;
 using EnterpriseInventory.Application.Abstractions;
 using EnterpriseInventory.Application.Assets;
 using EnterpriseInventory.Domain.Assets;
@@ -287,6 +288,78 @@ internal sealed partial class AssetStore(
         return AssetWriteResult.Succeeded(await FindAsync(id, cancellationToken).ConfigureAwait(false));
     }
 
+    public async Task<AssetWriteResult> ArchiveAsync(int id, byte[] rowVersion, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(rowVersion);
+
+        var asset = await LoadForChangeAsync(id, cancellationToken).ConfigureAwait(false);
+        if (asset is null)
+        {
+            return AssetWriteResult.NotFound;
+        }
+
+        if (!asset.RowVersion.AsSpan().SequenceEqual(rowVersion))
+        {
+            LogConflict(id);
+            return AssetWriteResult.Conflict;
+        }
+
+        var before = AssetAuditTrail.Snapshot(asset);
+        try
+        {
+            asset.Archive();
+        }
+        catch (DomainException ex)
+        {
+            return AssetWriteResult.Rule(ex.Code);
+        }
+
+        foreach (var (action, oldValues, newValues) in AssetAuditTrail.Changes(before, AssetAuditTrail.Snapshot(asset)))
+        {
+            Audit(asset, action, oldValues, newValues);
+        }
+
+        try
+        {
+            // One SaveChanges: the archive flag and its audit record are committed together or not at all.
+            await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            db.ChangeTracker.Clear();
+            LogConflict(id);
+            return AssetWriteResult.Conflict;
+        }
+
+        LogArchived(id, asset.AssetCode);
+        return AssetWriteResult.Succeeded(await FindAsync(id, cancellationToken).ConfigureAwait(false));
+    }
+
+    public async Task<PagedResult<AssetHistoryEntry>?> HistoryAsync(int id, int page, int pageSize, CancellationToken cancellationToken)
+    {
+        if (!await db.Assets.AnyAsync(a => a.Id == id, cancellationToken).ConfigureAwait(false))
+        {
+            return null;
+        }
+
+        var entityId = id.ToString(CultureInfo.InvariantCulture);
+        var records = db.AuditLogs.AsNoTracking().Where(a => a.EntityName == AssetAuditTrail.EntityName && a.EntityId == entityId);
+        var totalCount = await records.CountAsync(cancellationToken).ConfigureAwait(false);
+
+        // Newest first. The ID is the order records were written in, even when two share a timestamp.
+        var rows = await records
+            .OrderByDescending(a => a.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(a => new { a.Id, a.Action, a.UserName, a.Timestamp, a.CorrelationId, a.OldValues, a.NewValues })
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        var items = rows.ConvertAll(r => new AssetHistoryEntry(
+            r.Id, r.Action, r.UserName, r.Timestamp, r.CorrelationId, AssetAuditTrail.Parse(r.OldValues), AssetAuditTrail.Parse(r.NewValues)));
+        return new PagedResult<AssetHistoryEntry>(items, page, pageSize, totalCount);
+    }
+
     /// <summary>The asset with everything its audit snapshot names, tracked so it can be changed.</summary>
     private Task<Asset?> LoadForChangeAsync(int id, CancellationToken cancellationToken) =>
         db.Assets
@@ -406,6 +479,9 @@ internal sealed partial class AssetStore(
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Asset {AssetId} ({AssetCode}) created")]
     private partial void LogCreated(int assetId, string assetCode);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Asset {AssetId} ({AssetCode}) archived")]
+    private partial void LogArchived(int assetId, string assetCode);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Asset {AssetId} updated ({AuditActions})")]
     private partial void LogUpdated(int assetId, string auditActions);

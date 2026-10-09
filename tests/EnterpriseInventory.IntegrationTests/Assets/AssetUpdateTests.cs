@@ -281,7 +281,7 @@ public sealed class AssetUpdateTests(SqlServerDatabaseFixture fixture) : IAsyncL
     public async Task An_assigned_asset_keeps_its_status_while_edited_and_cannot_change_it()
     {
         using var client = _api!.CreateSignedInClient(User);
-        var id = await SeedAsync(asset => asset.Assign(
+        var id = await _refs.SaveAssetAsync(fixture, asset => asset.Assign(
             PersistenceTestData.NewEmployee(fixture.Clock.GetUtcNow()), "Zimmet", notes: null, "mehmet.admin", fixture.Clock.GetUtcNow()));
         var assigned = await client.GetOkAsync($"/api/assets/{id}");
 
@@ -303,7 +303,7 @@ public sealed class AssetUpdateTests(SqlServerDatabaseFixture fixture) : IAsyncL
     public async Task An_archived_asset_cannot_be_edited()
     {
         using var client = _api!.CreateSignedInClient(User);
-        var id = await SeedAsync(asset => asset.Archive());
+        var id = await _refs.SaveAssetAsync(fixture, asset => asset.Archive());
         var archived = await client.GetOkAsync($"/api/assets/{id}");
         var body = archived.ToUpdateBody();
         body["description"] = "Arşivden sonra";
@@ -341,24 +341,6 @@ public sealed class AssetUpdateTests(SqlServerDatabaseFixture fixture) : IAsyncL
 
         Assert.Equal("csrf_invalid", (await AssetApi.ReadAsync(response, HttpStatusCode.BadRequest)).GetProperty("code").GetString());
         await AssertUnchangedAsync(client, created);
-    }
-
-    /// <summary>Saves an asset on the seeded lookups after <paramref name="prepare"/> and returns its ID.</summary>
-    private async Task<int> SeedAsync(Action<Asset> prepare)
-    {
-        await using var db = fixture.CreateContext();
-        var asset = Asset.Create(
-            PersistenceTestData.Unique("DMR")[..30],
-            AssetType.Desktop,
-            await db.AssetModels.Include(m => m.Brand).SingleAsync(m => m.Id == _refs.ModelId),
-            await db.Cities.SingleAsync(c => c.Id == _refs.CityId),
-            await db.Departments.SingleAsync(d => d.Id == _refs.DepartmentId),
-            computerName: "PC-SEED",
-            serialNumber: PersistenceTestData.Unique("SN"));
-        prepare(asset);
-        db.Add(asset);
-        await db.SaveChangesAsync();
-        return asset.Id;
     }
 
     private async Task<List<AuditLog>> AuditRecordsAsync(int assetId)

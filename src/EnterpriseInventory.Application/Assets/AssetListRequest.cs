@@ -23,12 +23,19 @@ internal sealed class AssetListRequestValidator : AbstractValidator<AssetListReq
 {
     public AssetListRequestValidator()
     {
-        RuleFor(r => r.Page)
-            .InclusiveBetween(1, AssetListRequest.MaxPage)
+        RuleFor(r => r.Page).MustBePage();
+        RuleFor(r => r.PageSize).MustBePageSize();
+    }
+}
+
+/// <summary>Paging rules every asset list shares (the inventory and an asset's history).</summary>
+internal static class PagingRules
+{
+    public static IRuleBuilderOptions<T, int?> MustBePage<T>(this IRuleBuilderInitial<T, int?> rule) =>
+        rule.InclusiveBetween(1, AssetListRequest.MaxPage)
             .WithMessage($"Sayfa numarası 1 ile {AssetListRequest.MaxPage} arasında olmalıdır.");
 
-        RuleFor(r => r.PageSize)
-            .InclusiveBetween(1, AssetListRequest.MaxPageSize)
+    public static IRuleBuilderOptions<T, int?> MustBePageSize<T>(this IRuleBuilderInitial<T, int?> rule) =>
+        rule.InclusiveBetween(1, AssetListRequest.MaxPageSize)
             .WithMessage($"Sayfa boyutu 1 ile {AssetListRequest.MaxPageSize} arasında olmalıdır.");
-    }
 }
