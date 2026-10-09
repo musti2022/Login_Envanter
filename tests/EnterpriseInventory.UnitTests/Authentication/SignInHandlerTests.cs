@@ -13,7 +13,7 @@ public class SignInHandlerTests
     private static readonly DirectoryAccount Ayse = new(Guid.NewGuid(), "S-1-5-21-1-2-3-1105", "ayse.admin", "Ayşe Yılmaz");
 
     private readonly FakeDirectory _directory = new();
-    private readonly RecordingAdminUsers _adminUsers = new();
+    private readonly RecordingSessions _sessions = new();
     private readonly ListLogger _logger = new();
 
     [Fact]
@@ -25,7 +25,8 @@ public class SignInHandlerTests
 
         Assert.Equal(SignInOutcome.Succeeded, result.Outcome);
         Assert.Equal(Ayse, result.Account);
-        Assert.Equal([Ayse], _adminUsers.Recorded);
+        Assert.Equal(RecordingSessions.Session, result.Session);
+        Assert.Equal([Ayse], _sessions.Recorded);
         Assert.Equal(("ayse.admin", Password), _directory.LastCall);
         Assert.Contains(_logger.Messages, m => m.Level == LogLevel.Information && m.Text.Contains("ayse.admin signed in from 10.0.0.5", StringComparison.Ordinal));
     }
@@ -45,7 +46,7 @@ public class SignInHandlerTests
 
         Assert.Equal(expected, result.Outcome);
         Assert.Null(result.Account);
-        Assert.Empty(_adminUsers.Recorded);
+        Assert.Empty(_sessions.Recorded);
         Assert.Contains(_logger.Messages, m => m.Level >= LogLevel.Warning && m.Text.Contains("ayse.admin", StringComparison.Ordinal));
     }
 
@@ -62,7 +63,7 @@ public class SignInHandlerTests
         var result = await Handler().HandleAsync(new SignInRequest("ayse.admin", Password), CancellationToken.None);
 
         Assert.Equal(expected, result.Outcome);
-        Assert.Empty(_adminUsers.Recorded);
+        Assert.Empty(_sessions.Recorded);
         var entry = Assert.Single(_logger.Messages, m => m.Level >= LogLevel.Warning);
         Assert.Contains("ay… (10 characters)", entry.Text, StringComparison.Ordinal);
         Assert.Contains(status == DirectorySignInStatus.DirectoryUnavailable ? "directory is unavailable" : status.ToString(), entry.Text, StringComparison.Ordinal);
@@ -73,7 +74,7 @@ public class SignInHandlerTests
     public async Task A_sign_in_that_cannot_be_recorded_is_refused()
     {
         _directory.Result = DirectorySignInResult.Succeeded(Ayse);
-        _adminUsers.Failure = new InvalidOperationException("database down");
+        _sessions.Failure = new InvalidOperationException("database down");
 
         var result = await Handler().HandleAsync(new SignInRequest("ayse.admin", Password), CancellationToken.None);
 
@@ -87,7 +88,7 @@ public class SignInHandlerTests
     public async Task A_cancelled_sign_in_is_not_turned_into_a_refusal()
     {
         _directory.Result = DirectorySignInResult.Succeeded(Ayse);
-        _adminUsers.Failure = new OperationCanceledException();
+        _sessions.Failure = new OperationCanceledException();
 
         await Assert.ThrowsAsync<OperationCanceledException>(
             () => Handler().HandleAsync(new SignInRequest("ayse.admin", Password), CancellationToken.None));
@@ -101,7 +102,7 @@ public class SignInHandlerTests
         var result = await Handler().HandleAsync(new SignInRequest("ayse.admin", Password), CancellationToken.None);
 
         Assert.Equal(SignInOutcome.InvalidCredentials, result.Outcome);
-        Assert.Empty(_adminUsers.Recorded);
+        Assert.Empty(_sessions.Recorded);
     }
 
     [Theory]
@@ -149,7 +150,7 @@ public class SignInHandlerTests
         // The validator exactly as the application registers it.
         using var services = new ServiceCollection().AddApplication().BuildServiceProvider();
         var validator = services.GetRequiredService<IValidator<SignInRequest>>();
-        return new SignInHandler(validator, _directory, _adminUsers, new FixedRequestContext(), _logger);
+        return new SignInHandler(validator, _directory, _sessions, new FixedRequestContext(), _logger);
     }
 
     private sealed class FakeDirectory : IDirectoryService
@@ -163,24 +164,34 @@ public class SignInHandlerTests
             LastCall = (userName, password);
             return Task.FromResult(Result);
         }
+
+        public Task<DirectoryAccessStatus> CheckAccessAsync(Guid objectGuid, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
     }
 
-    private sealed class RecordingAdminUsers : IAdminUserStore
+    private sealed class RecordingSessions : IUserSessionService
     {
+        public static readonly StartedSession Session = new("session-key", DateTimeOffset.UnixEpoch);
+
         public List<DirectoryAccount> Recorded { get; } = [];
 
         public Exception? Failure { get; set; }
 
-        public Task RecordSignInAsync(DirectoryAccount account, CancellationToken cancellationToken)
+        public Task<StartedSession> StartAsync(DirectoryAccount account, CancellationToken cancellationToken)
         {
             if (Failure is not null)
             {
-                return Task.FromException(Failure);
+                return Task.FromException<StartedSession>(Failure);
             }
 
             Recorded.Add(account);
-            return Task.CompletedTask;
+            return Task.FromResult(Session);
         }
+
+        public Task<SessionValidationResult> ValidateAsync(string sessionKey, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
+        public Task EndAsync(string sessionKey, CancellationToken cancellationToken) => throw new NotSupportedException();
     }
 
     private sealed class FixedRequestContext : IRequestContext

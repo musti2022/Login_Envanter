@@ -47,6 +47,16 @@ internal sealed class FakeDirectoryService : IDirectoryService
         return Task.FromResult(result);
     }
 
+    public Task<DirectoryAccessStatus> CheckAccessAsync(Guid objectGuid, CancellationToken cancellationToken)
+    {
+        var user = _options.FakeUsers.FirstOrDefault(u => ToAccount(u).ObjectGuid == objectGuid);
+        var status = user is null ? DirectoryAccessStatus.AccountNotFound
+            : user.IsDisabled ? DirectoryAccessStatus.AccountDisabled
+            : !user.IsAllowedGroupMember ? DirectoryAccessStatus.NotAuthorized
+            : DirectoryAccessStatus.Allowed;
+        return Task.FromResult(status);
+    }
+
     private static DirectoryAccount ToAccount(FakeDirectoryUser user)
     {
         // Stable identifiers derived from the name, so the same fake user maps to the same AdminUser record.

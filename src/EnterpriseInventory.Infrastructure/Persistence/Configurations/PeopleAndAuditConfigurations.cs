@@ -34,6 +34,28 @@ internal sealed class AdminUserConfiguration : IEntityTypeConfiguration<AdminUse
     }
 }
 
+internal sealed class UserSessionConfiguration : IEntityTypeConfiguration<UserSession>
+{
+    public void Configure(EntityTypeBuilder<UserSession> builder)
+    {
+        builder.Property(s => s.KeyHash).HasMaxLength(UserSession.KeyHashLength).IsFixedLength().IsRequired();
+        builder.Property(s => s.ClientAddress).HasMaxLength(UserSession.ClientAddressMaxLength);
+        builder.HasOne(s => s.AdminUser)
+            .WithMany()
+            .HasForeignKey(s => s.AdminUserId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.HasIndex(s => s.KeyHash).IsUnique();
+
+        builder.ToTable(t =>
+        {
+            t.HasCheckConstraint("CK_UserSessions_EndReason", $"[EndReason] IS NULL OR [EndReason] IN ({ConfigurationExtensions.SqlValues<SessionEndReason>()})");
+            t.HasCheckConstraint("CK_UserSessions_Ended", "([EndedAt] IS NULL AND [EndReason] IS NULL) OR ([EndedAt] IS NOT NULL AND [EndReason] IS NOT NULL)");
+            t.HasCheckConstraint("CK_UserSessions_Times", "[LastSeenAt] >= [StartedAt] AND [ExpiresAt] > [StartedAt]");
+        });
+    }
+}
+
 internal sealed class AuditLogConfiguration : IEntityTypeConfiguration<AuditLog>
 {
     public void Configure(EntityTypeBuilder<AuditLog> builder)

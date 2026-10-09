@@ -3,6 +3,11 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using EnterpriseInventory.IntegrationTests.ActiveDirectory;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
+using Microsoft.AspNetCore.Http.Features;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace EnterpriseInventory.IntegrationTests.Api;
 
@@ -20,7 +25,7 @@ public class LoginEndpointTests
         await using var api = new TestApiFactory(useTestAuthentication: false);
         using var client = api.CreateAnonymousClient();
 
-        using var response = await client.PostAsJsonAsync(Login, new { userName = " ", password = "" });
+        using var response = await client.PostLoginAsync(new { userName = " ", password = "" });
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var problem = await ProblemJson.ReadAsync(response);
@@ -46,17 +51,37 @@ public class LoginEndpointTests
     }
 
     [Fact]
+    public async Task A_sign_in_without_a_csrf_token_is_refused()
+    {
+        await using var api = new TestApiFactory(useTestAuthentication: false, settings: FakeDirectory);
+        using var client = api.CreateAnonymousClient();
+
+        using var response = await client.PostAsJsonAsync(Login, new { userName = "dev.admin", password = FakePassword });
+
+        await AssertRefused(response, HttpStatusCode.BadRequest, "csrf_invalid", "Güvenlik doğrulaması başarısız oldu.");
+    }
+
+    [Fact]
     public async Task Oversized_bodies_are_refused()
     {
-        // The in-memory test server does not enforce body size limits, so this one runs on Kestrel.
+        // The in-memory test server does not enforce body size limits, so this one runs on Kestrel, over HTTPS as in
+        // production (the CSRF cookie is only ever issued over HTTPS).
+        using var ca = TestPki.CreateCa("Test API CA");
+        using var certificate = TestPki.CreateServerCertificate(ca, "127.0.0.1");
         await using var api = new TestApiFactory(useTestAuthentication: false);
-        api.UseKestrel(0);
+        api.UseKestrel(options => options.Listen(IPAddress.Loopback, 0, listen => listen.UseHttps(certificate)));
         api.StartServer();
-        using var client = api.CreateClient();
+        using var handler = new HttpClientHandler
+        {
+            CookieContainer = new CookieContainer(),
+            ServerCertificateCustomValidationCallback = (_, presented, _, _) => presented?.Thumbprint == certificate.Thumbprint,
+        };
+        using var client = new HttpClient(handler) { BaseAddress = new Uri(api.Services.GetRequiredService<IServer>().Features.GetRequiredFeature<IServerAddressesFeature>().Addresses.Single()) };
+        var csrfToken = await client.GetCsrfTokenAsync();
         using var body = new StringContent(
             JsonSerializer.Serialize(new { userName = "ayse.admin", password = new string('x', 10_000) }), Encoding.UTF8, "application/json");
 
-        using var response = await client.PostAsync(Login, body);
+        using var response = await client.PostWithCsrfAsync(Login, csrfToken, body);
 
         Assert.Equal(HttpStatusCode.RequestEntityTooLarge, response.StatusCode);
     }
@@ -67,7 +92,7 @@ public class LoginEndpointTests
         await using var api = new TestApiFactory(useTestAuthentication: false);
         using var client = api.CreateAnonymousClient();
 
-        using var response = await client.PostAsJsonAsync(Login, new { userName = "ayse.admin", password = "Any-Password-1" });
+        using var response = await client.PostLoginAsync(new { userName = "ayse.admin", password = "Any-Password-1" });
 
         Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
         var problem = await ProblemJson.ReadAsync(response);
@@ -89,7 +114,7 @@ public class LoginEndpointTests
         for (var attempt = 0; attempt < 3; attempt++)
         {
             last?.Dispose();
-            last = await client.PostAsJsonAsync(Login, new { userName = "ayse.admin", password = "" });
+            last = await client.PostLoginAsync(new { userName = "ayse.admin", password = "" });
             statuses.Add(last.StatusCode);
         }
 
@@ -142,7 +167,7 @@ public class LoginEndpointTests
         await using var api = new TestApiFactory(useTestAuthentication: false, settings: FakeDirectory);
         using var client = api.CreateAnonymousClient();
 
-        using var response = await client.PostAsJsonAsync(Login, new { userName = "dev.admin", password = FakePassword });
+        using var response = await client.PostLoginAsync(new { userName = "dev.admin", password = FakePassword });
 
         await AssertRefused(response, HttpStatusCode.ServiceUnavailable, "sign_in_unavailable", "Giriş şu anda yapılamıyor.");
     }
@@ -157,7 +182,7 @@ public class LoginEndpointTests
         await using var api = new TestApiFactory(useTestAuthentication: false, settings: FakeDirectory);
         using var client = api.CreateAnonymousClient();
 
-        using var response = await client.PostAsJsonAsync(Login, new { userName, password });
+        using var response = await client.PostLoginAsync(new { userName, password });
 
         await AssertRefused(response, status, code, title);
     }
@@ -175,8 +200,8 @@ public class LoginEndpointTests
         await using var api = new TestApiFactory(useTestAuthentication: false, settings: TestActiveDirectory.Settings());
         using var client = api.CreateAnonymousClient();
 
-        using var response = await client.PostAsJsonAsync(
-            Login, new { userName, password = rightPassword ? TestActiveDirectory.UserPassword : "Wrong-Password-1" });
+        using var response = await client.PostLoginAsync(
+            new { userName, password = rightPassword ? TestActiveDirectory.UserPassword : "Wrong-Password-1" });
 
         await AssertRefused(response, status, code, title: null);
     }
@@ -219,7 +244,7 @@ public class LoginEndpointTests
                 using var client = api.CreateAnonymousClient();
                 foreach (var (userName, password) in attempts)
                 {
-                    using var response = await client.PostAsJsonAsync(Login, new { userName, password });
+                    using var response = await client.PostLoginAsync(new { userName, password });
                     Assert.True(
                         response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden or HttpStatusCode.ServiceUnavailable,
                         $"{userName}: {response.StatusCode}");

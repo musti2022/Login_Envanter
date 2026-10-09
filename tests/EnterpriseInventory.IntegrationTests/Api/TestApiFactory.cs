@@ -22,8 +22,12 @@ public sealed class TestApiFactory(
     string environment = "Development",
     IReadOnlyDictionary<string, string?>? settings = null,
     Action<IApplicationBuilder>? appendToPipeline = null,
-    bool useTestAuthentication = true) : WebApplicationFactory<Program>
+    bool useTestAuthentication = true,
+    Action<IServiceCollection>? configureServices = null) : WebApplicationFactory<Program>
 {
+    /// <summary>Data Protection keys shared by every test host, as the hosts of one deployment share theirs.</summary>
+    public static readonly string KeysDirectory = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "ei-test-dataprotection-keys")).FullName;
+
     /// <summary>A server name that cannot resolve, so database checks fail fast without SQL Server.</summary>
     public const string UnreachableDatabase = "Server=unreachable.invalid;Database=none;Connect Timeout=1";
 
@@ -39,6 +43,8 @@ public sealed class TestApiFactory(
         ["ActiveDirectory:BaseDn"] = "DC=unreachable,DC=invalid",
         ["ActiveDirectory:AllowedGroupSid"] = "S-1-5-21-1-2-3-1105",
         ["ActiveDirectory:NestedGroupPolicy"] = "DirectMembershipOnly",
+        ["ActiveDirectory:ServiceAccountUserName"] = "svc.unreachable",
+        ["ActiveDirectory:ServiceAccountPassword"] = "not-a-real-password",
         ["ActiveDirectory:ConnectTimeoutSeconds"] = "2",
     };
 
@@ -64,6 +70,7 @@ public sealed class TestApiFactory(
             var values = new Dictionary<string, string?>(UnreachableDirectory)
             {
                 ["ConnectionStrings:DefaultConnection"] = connectionString,
+                ["DataProtection:KeysDirectory"] = KeysDirectory,
             };
             foreach (var (key, value) in settings ?? new Dictionary<string, string?>())
             {
@@ -84,6 +91,8 @@ public sealed class TestApiFactory(
             {
                 services.AddSingleton<IStartupFilter>(new AppendToPipeline(appendToPipeline));
             }
+
+            configureServices?.Invoke(services);
         });
     }
 

@@ -155,8 +155,36 @@ public class ApiPipelineTests
         Assert.Throws<OptionsValidationException>(() => api.CreateAnonymousClient());
     }
 
+    [Theory]
+    [InlineData("0", "8")]
+    [InlineData("20", "48")]
+    [InlineData("120", "1")] // idle timeout longer than the absolute one
+    public async Task Invalid_session_settings_stop_the_application_from_starting(string idleMinutes, string absoluteHours)
+    {
+        await using var api = new TestApiFactory(settings: new Dictionary<string, string?>
+        {
+            ["Session:IdleTimeoutMinutes"] = idleMinutes,
+            ["Session:AbsoluteTimeoutHours"] = absoluteHours,
+        });
+
+        Assert.Throws<OptionsValidationException>(() => api.CreateAnonymousClient());
+    }
+
+    [Theory]
+    [InlineData("Production", "")]
+    [InlineData("Staging", "")]
+    [InlineData("Production", "relative/keys")]
+    [InlineData("Production", "/srv/CHANGE-ME/keys")]
+    public async Task Without_a_safe_place_for_the_cookie_keys_the_application_does_not_start(string environment, string keysDirectory)
+    {
+        await using var api = new TestApiFactory(environment: environment, settings: new Dictionary<string, string?> { ["DataProtection:KeysDirectory"] = keysDirectory });
+
+        var error = Assert.Throws<OptionsValidationException>(() => api.CreateAnonymousClient());
+        Assert.Contains("DataProtection:KeysDirectory", error.Message, StringComparison.Ordinal);
+    }
+
     [Fact]
-    public async Task Only_the_health_probes_and_sign_in_allow_anonymous_access()
+    public async Task Only_the_health_probes_csrf_token_and_sign_in_allow_anonymous_access()
     {
         await using var api = new TestApiFactory();
         using var client = api.CreateAnonymousClient();
@@ -167,7 +195,7 @@ public class ApiPipelineTests
             .Select(endpoint => endpoint.RoutePattern.RawText)
             .Order(StringComparer.Ordinal);
 
-        Assert.Equal(["/api/auth/login", "/api/health/live", "/api/health/ready"], anonymous);
+        Assert.Equal(["/api/auth/csrf", "/api/auth/login", "/api/health/live", "/api/health/ready"], anonymous);
     }
 
     private static string Header(HttpResponseMessage response, string name) =>

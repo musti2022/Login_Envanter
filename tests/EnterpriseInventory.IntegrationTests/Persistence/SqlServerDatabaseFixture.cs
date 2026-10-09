@@ -117,3 +117,15 @@ public sealed class SqlServerFactAttribute : FactAttribute
         }
     }
 }
+
+/// <summary>A theory that runs only when <c>EI_TEST_SQL_CONNECTION</c> points at a SQL Server.</summary>
+public sealed class SqlServerTheoryAttribute : TheoryAttribute
+{
+    public SqlServerTheoryAttribute()
+    {
+        if (SqlServerDatabaseFixture.ServerConnectionString is null)
+        {
+            Skip = $"{SqlServerDatabaseFixture.ConnectionVariable} is not set; SQL Server tests are skipped.";
+        }
+    }
+}

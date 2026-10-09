@@ -57,6 +57,30 @@ public class FakeDirectoryServiceTests
         Assert.Equal(DirectorySignInStatus.AccountDisabled, (await Service().SignInAsync("dev.disabled", Password, CancellationToken.None)).Status);
     }
 
+    [Theory]
+    [InlineData("dev.admin", DirectoryAccessStatus.Allowed)]
+    [InlineData("dev.user", DirectoryAccessStatus.NotAuthorized)]
+    [InlineData("dev.disabled", DirectoryAccessStatus.AccountDisabled)]
+    public async Task Access_checks_follow_the_configured_users(string userName, DirectoryAccessStatus expected)
+    {
+        // The identity the user would get by signing in, found through a member with the same settings.
+        var options = Options();
+        var member = options.Value.FakeUsers.Single(u => u.UserName == userName);
+        member.IsAllowedGroupMember = true;
+        member.IsDisabled = false;
+        var objectGuid = (await new FakeDirectoryService(options, new TestHostEnvironment("Development")).SignInAsync(userName, Password, CancellationToken.None)).Account!.ObjectGuid;
+
+        var status = await Service().CheckAccessAsync(objectGuid, CancellationToken.None);
+
+        Assert.Equal(expected, status);
+    }
+
+    [Fact]
+    public async Task An_unknown_user_is_not_found()
+    {
+        Assert.Equal(DirectoryAccessStatus.AccountNotFound, await Service().CheckAccessAsync(Guid.NewGuid(), CancellationToken.None));
+    }
+
     private static FakeDirectoryService Service() => new(Options(), new TestHostEnvironment("Development"));
 
     private static IOptions<ActiveDirectoryOptions> Options()

@@ -168,7 +168,7 @@ public sealed class LdapsConnectionTests : IDisposable
         options.AllowedGroupSid = "S-1-5-21-1-2-3-1105";
         options.NestedGroupPolicy = NestedGroupPolicy.DirectMembershipOnly;
         using var factory = new LdapConnectionFactory(Microsoft.Extensions.Options.Options.Create(options), _logger);
-        var service = new LdapDirectoryService(factory, Microsoft.Extensions.Options.Options.Create(options), new CapturingLogger<LdapDirectoryService>());
+        var service = new LdapDirectoryService(factory, Microsoft.Extensions.Options.Options.Create(options), TimeProvider.System, new CapturingLogger<LdapDirectoryService>());
         var stopwatch = Stopwatch.StartNew();
 
         var result = await service.SignInAsync("ayse.admin", "Any-Password-1", CancellationToken.None);

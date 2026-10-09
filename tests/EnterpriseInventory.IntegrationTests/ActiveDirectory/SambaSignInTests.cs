@@ -218,7 +218,7 @@ public sealed class SambaSignInTests : IDisposable
     }
 
     private static LdapDirectoryService Service(CountingConnectionFactory connections, ILogger<LdapDirectoryService>? logger = null) =>
-        new(connections, Microsoft.Extensions.Options.Options.Create(connections.Options), logger ?? NullLogger<LdapDirectoryService>.Instance);
+        new(connections, Microsoft.Extensions.Options.Options.Create(connections.Options), TimeProvider.System, logger ?? NullLogger<LdapDirectoryService>.Instance);
 
     /// <summary>The real connection factory, counting how often the directory is contacted.</summary>
     private sealed class CountingConnectionFactory(ActiveDirectoryOptions options) : ILdapConnectionFactory, IDisposable

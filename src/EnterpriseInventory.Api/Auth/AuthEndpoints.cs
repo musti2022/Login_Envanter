@@ -4,6 +4,7 @@ using System.Text.Json;
 using EnterpriseInventory.Api.Http;
 using EnterpriseInventory.Api.Security;
 using EnterpriseInventory.Application.Authentication;
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Http.HttpResults;
@@ -14,6 +15,7 @@ namespace EnterpriseInventory.Api.Auth;
 internal static class AuthEndpoints
 {
     public const string LoginPath = "/api/auth/login";
+    public const string CsrfPath = "/api/auth/csrf";
 
     /// <summary>Generous for a user name and password, small enough that the endpoint cannot be fed large bodies.</summary>
     private const long MaxLoginBodyBytes = 8 * 1024;
@@ -21,23 +23,34 @@ internal static class AuthEndpoints
     public static IEndpointRouteBuilder MapAuthEndpoints(this IEndpointRouteBuilder endpoints)
     {
         // Anonymous by necessity, rate limited per client address, and JSON only: a cross-site form cannot post
-        // JSON without a CORS preflight, which this API never allows.
+        // JSON without a CORS preflight, which this API never allows. Like every POST it needs a CSRF token.
         endpoints.MapPost(LoginPath, LoginAsync)
             .AllowAnonymous()
             .RequireRateLimiting(RateLimitingSetup.LoginPolicy)
             .Accepts<LoginRequest>("application/json")
             .WithMetadata(new RequestSizeLimitAttribute(MaxLoginBodyBytes));
 
+        // A CSRF token for the current user (or for an anonymous visitor, to sign in with). The token comes in the
+        // response body and is sent back in the X-CSRF-TOKEN header; its cookie half is HttpOnly.
+        endpoints.MapGet(CsrfPath, (HttpContext httpContext, IAntiforgery antiforgery) =>
+                TypedResults.Ok(new CsrfToken(antiforgery.GetAndStoreTokens(httpContext).RequestToken!)))
+            .AllowAnonymous();
+
+        endpoints.MapGet("/api/auth/me", (HttpContext httpContext) => TypedResults.Ok(CurrentUser(httpContext.User)));
+
+        endpoints.MapPost("/api/auth/logout", LogoutAsync);
+
         return endpoints;
     }
 
     private static async Task<Results<Ok<SignedInUser>, ValidationProblem, ProblemHttpResult>> LoginAsync(
-        LoginRequest body, SignInHandler signIn, HttpContext httpContext, CancellationToken cancellationToken)
+        LoginRequest body, SignInHandler signIn, IAntiforgery antiforgery, HttpContext httpContext, CancellationToken cancellationToken)
     {
         var result = await signIn.HandleAsync(new SignInRequest(body.UserName, body.Password), cancellationToken);
         return result.Outcome switch
         {
-            SignInOutcome.Succeeded when result.Account is { } account => await SignInAsync(httpContext, account),
+            SignInOutcome.Succeeded when result is { Account: { } account, Session: { } session } =>
+                await SignInAsync(httpContext, antiforgery, account, session),
             SignInOutcome.ValidationFailed => TypedResults.ValidationProblem(
                 CamelCaseKeys(result.Errors ?? new Dictionary<string, string[]>()), title: "İstek geçersiz."),
             SignInOutcome.AccountUnavailable => Problem(
@@ -72,7 +85,7 @@ internal static class AuthEndpoints
     }
 
     private static async Task<Results<Ok<SignedInUser>, ValidationProblem, ProblemHttpResult>> SignInAsync(
-        HttpContext httpContext, DirectoryAccount account)
+        HttpContext httpContext, IAntiforgery antiforgery, DirectoryAccount account, StartedSession session)
     {
         var identity = new ClaimsIdentity(
             [
@@ -81,17 +94,44 @@ internal static class AuthEndpoints
                 new Claim(AppClaimTypes.DisplayName, account.DisplayName),
                 new Claim(ClaimTypes.PrimarySid, account.SecurityIdentifier),
                 new Claim(ClaimTypes.Role, Roles.Administrator),
+                new Claim(AppClaimTypes.SessionKey, session.Key),
             ],
             CookieAuthenticationDefaults.AuthenticationScheme,
             ClaimTypes.Name,
             ClaimTypes.Role);
+        var principal = new ClaimsPrincipal(identity);
 
+        // Not persistent: the browser drops the cookie when it closes. The ticket ends with the session.
         await httpContext.SignInAsync(
             CookieAuthenticationDefaults.AuthenticationScheme,
-            new ClaimsPrincipal(identity),
-            new AuthenticationProperties { IsPersistent = false });
+            principal,
+            new AuthenticationProperties { IsPersistent = false, ExpiresUtc = session.ExpiresAt, AllowRefresh = false });
 
-        return TypedResults.Ok(new SignedInUser(account.SamAccountName, account.DisplayName, [Roles.Administrator]));
+        // CSRF tokens are bound to the user, so the token used to sign in is no longer valid; hand out a new one.
+        httpContext.User = principal;
+        var csrfToken = antiforgery.GetAndStoreTokens(httpContext).RequestToken!;
+
+        return TypedResults.Ok(CurrentUser(principal) with { CsrfToken = csrfToken });
+    }
+
+    private static async Task<NoContent> LogoutAsync(HttpContext httpContext, IUserSessionService sessions, CancellationToken cancellationToken)
+    {
+        if (httpContext.User.FindFirstValue(AppClaimTypes.SessionKey) is { } key)
+        {
+            await sessions.EndAsync(key, cancellationToken);
+        }
+
+        await httpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+        return TypedResults.NoContent();
+    }
+
+    private static SignedInUser CurrentUser(ClaimsPrincipal user)
+    {
+        var userName = user.Identity?.Name ?? string.Empty;
+        return new SignedInUser(
+            userName,
+            user.FindFirstValue(AppClaimTypes.DisplayName) ?? userName,
+            [.. user.FindAll(ClaimTypes.Role).Select(role => role.Value)]);
     }
 
     private static ProblemHttpResult Problem(int status, string title, string? detail, string code) =>
@@ -103,4 +143,11 @@ internal static class AuthEndpoints
 
 internal sealed record LoginRequest(string? UserName, string? Password);
 
-internal sealed record SignedInUser(string UserName, string DisplayName, IReadOnlyList<string> Roles);
+/// <param name="CsrfToken">Only in the sign-in response: the CSRF token bound to the user who just signed in.</param>
+internal sealed record SignedInUser(string UserName, string DisplayName, IReadOnlyList<string> Roles)
+{
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? CsrfToken { get; init; }
+}
+
+internal sealed record CsrfToken(string Token);

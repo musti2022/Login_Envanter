@@ -143,9 +143,95 @@ public sealed class LdapDirectoryServiceTests : IDisposable
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => Service().SignInAsync("ayse.admin", Password, cancellation.Token));
     }
 
+    // --- Access re-check of signed-in users (day 9) -----------------------------------------------------------
+
+    [Theory]
+    [InlineData("svc.envanter", "svc.envanter@corp.example.com")]
+    [InlineData("svc.envanter@corp.example.com", "svc.envanter@corp.example.com")]
+    [InlineData("CN=svc.envanter,OU=Service,DC=corp,DC=example,DC=com", "CN=svc.envanter,OU=Service,DC=corp,DC=example,DC=com")]
+    public async Task The_access_check_binds_as_the_service_account_and_finds_the_user_by_object_guid(string configured, string boundAs)
+    {
+        var objectGuid = Guid.Parse("8f7a3c1e-5b2d-4e9f-a1c3-0d6e2b4f8a71");
+        _connection.Users[0] = User(objectGuid: objectGuid);
+
+        var status = await Service(serviceAccount: configured).CheckAccessAsync(objectGuid, CancellationToken.None);
+
+        Assert.Equal(DirectoryAccessStatus.Allowed, status);
+        Assert.Equal((boundAs, ServicePassword), _connection.BoundAs);
+        Assert.Contains($"(objectGUID={DirectoryValues.EscapeFilterBytes(objectGuid.ToByteArray())})", _connection.LastFilter, StringComparison.Ordinal);
+        Assert.True(_connection.IsDisposed);
+    }
+
+    [Fact]
+    public async Task A_user_who_left_the_group_loses_access()
+    {
+        _connection.TokenGroups = ["S-1-5-21-1-2-3-513"];
+
+        Assert.Equal(DirectoryAccessStatus.NotAuthorized, await CheckAccess());
+    }
+
+    [Fact]
+    public async Task A_disabled_user_loses_access()
+    {
+        _connection.Users[0] = User(userAccountControl: 0x202);
+
+        Assert.Equal(DirectoryAccessStatus.AccountDisabled, await CheckAccess());
+    }
+
+    [Theory]
+    [InlineData("0", DirectoryAccessStatus.Allowed)]
+    [InlineData("9223372036854775807", DirectoryAccessStatus.Allowed)]
+    [InlineData("134049024000000000", DirectoryAccessStatus.Allowed)]       // 2025-10-14, after the test clock
+    [InlineData("133735968000000000", DirectoryAccessStatus.AccountExpired)] // 2024-10-17, before it
+    public async Task An_expired_account_loses_access(string accountExpires, DirectoryAccessStatus expected)
+    {
+        _connection.Users[0] = User(accountExpires: accountExpires);
+
+        Assert.Equal(expected, await CheckAccess());
+    }
+
+    [Fact]
+    public async Task A_user_no_longer_under_base_dn_loses_access()
+    {
+        _connection.Users.Clear();
+
+        Assert.Equal(DirectoryAccessStatus.AccountNotFound, await CheckAccess());
+    }
+
+    [Theory]
+    [InlineData("data 52e")]
+    [InlineData("data 533")]
+    public async Task A_refused_service_account_means_access_cannot_be_confirmed(string reason)
+    {
+        _connection.BindError = new LdapException("Invalid Credentials", LdapException.InvalidCredentials, $"80090308: LdapErr: DSID-0C09044E, comment: AcceptSecurityContext error, {reason}, v4563");
+
+        Assert.Equal(DirectoryAccessStatus.DirectoryUnavailable, await CheckAccess());
+        Assert.Contains(_logger.Messages, m => m.Level == LogLevel.Error && m.Text.Contains("refused the service account svc.envanter", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Unexpected_account_data_means_access_cannot_be_confirmed()
+    {
+        _connection.Users[0] = User(userAccountControl: null);
+
+        Assert.Equal(DirectoryAccessStatus.DirectoryUnavailable, await CheckAccess());
+    }
+
+    [Fact]
+    public async Task A_directory_that_stops_answering_cannot_confirm_access()
+    {
+        _connection.HangOnBind = true;
+
+        Assert.Equal(DirectoryAccessStatus.DirectoryUnavailable, await CheckAccess());
+    }
+
+    private const string ServicePassword = "service-password-from-the-secret-store";
+
     private Task<DirectorySignInResult> SignIn() => Service().SignInAsync("ayse.admin", Password, CancellationToken.None);
 
-    private LdapDirectoryService Service() => new(
+    private Task<DirectoryAccessStatus> CheckAccess() => Service().CheckAccessAsync(Guid.NewGuid(), CancellationToken.None);
+
+    private LdapDirectoryService Service(string serviceAccount = "svc.envanter") => new(
         new ScriptedFactory(_connection),
         Microsoft.Extensions.Options.Options.Create(new ActiveDirectoryOptions
         {
@@ -154,16 +240,19 @@ public sealed class LdapDirectoryServiceTests : IDisposable
             BaseDn = "DC=corp,DC=example,DC=com",
             AllowedGroupSid = GroupSid,
             NestedGroupPolicy = NestedGroupPolicy.IncludeNested,
+            ServiceAccountUserName = serviceAccount,
+            ServiceAccountPassword = ServicePassword,
             ConnectTimeoutSeconds = 1,
             OperationTimeoutSeconds = 1,
         }),
+        new FixedClock(new DateTimeOffset(2025, 4, 1, 9, 0, 0, TimeSpan.Zero)),
         _logger);
 
-    private static LdapEntry User(int? userAccountControl = 0x200)
+    private static LdapEntry User(int? userAccountControl = 0x200, Guid? objectGuid = null, string? accountExpires = null)
     {
         var attributes = new LdapAttributeSet
         {
-            new LdapAttribute("objectGUID", Guid.NewGuid().ToByteArray()),
+            new LdapAttribute("objectGUID", (objectGuid ?? Guid.NewGuid()).ToByteArray()),
             new LdapAttribute("objectSid", DirectoryValues.SidToBytes("S-1-5-21-1-2-3-1201")),
             new LdapAttribute("sAMAccountName", "ayse.admin"),
             new LdapAttribute("displayName", "Ayşe Yılmaz"),
@@ -171,6 +260,11 @@ public sealed class LdapDirectoryServiceTests : IDisposable
         if (userAccountControl is { } flags)
         {
             attributes.Add(new LdapAttribute("userAccountControl", flags.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+        }
+
+        if (accountExpires is not null)
+        {
+            attributes.Add(new LdapAttribute("accountExpires", accountExpires));
         }
 
         return new LdapEntry(UserDn, attributes);
@@ -197,6 +291,8 @@ public sealed class LdapDirectoryServiceTests : IDisposable
         public bool HangOnBind { get; set; }
 
         public (string Name, string Password)? BoundAs { get; private set; }
+
+        public string? LastFilter { get; private set; }
 
         public bool IsDisposed { get; private set; }
 
@@ -231,10 +327,16 @@ public sealed class LdapDirectoryServiceTests : IDisposable
                 return Task.FromResult(new DirectorySearchResult([new LdapEntry(searchBase, [groups])], 0));
             }
 
+            LastFilter = filter;
             return Task.FromResult(new DirectorySearchResult([.. Users], SkippedReferrals));
         }
 
         public void Dispose() => IsDisposed = true;
+    }
+
+    private sealed class FixedClock(DateTimeOffset now) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => now;
     }
 }
 

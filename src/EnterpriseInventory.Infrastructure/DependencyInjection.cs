@@ -27,7 +27,7 @@ public static class DependencyInjection
         services.AddScoped(serviceProvider => new AuditableEntityInterceptor(
             new SignInAwareCurrentUser(serviceProvider.GetRequiredService<ICurrentUser>(), serviceProvider.GetRequiredService<SignInIdentity>()),
             serviceProvider.GetRequiredService<TimeProvider>()));
-        services.AddScoped<IAdminUserStore, AdminUserStore>();
+        services.AddScoped<IUserSessionService, UserSessionService>();
         services.AddDbContext<ApplicationDbContext>((serviceProvider, options) =>
         {
             var connectionString = configuration.GetConnectionString(ConnectionStringName);

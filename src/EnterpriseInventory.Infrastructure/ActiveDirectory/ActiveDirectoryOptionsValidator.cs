@@ -135,8 +135,9 @@ internal sealed partial class ActiveDirectoryOptionsValidator(IHostEnvironment e
             errors.Add($"ActiveDirectory:NestedGroupPolicy has an unknown value '{options.NestedGroupPolicy}'.");
         }
 
-        RejectPlaceholder(options.ServiceAccountUserName, "ServiceAccountUserName", errors);
-        RejectPlaceholder(options.ServiceAccountPassword, "ServiceAccountPassword", errors);
+        // Signed-in users' group membership and account state are re-checked with the service account.
+        RequireValue(options.ServiceAccountUserName, "ServiceAccountUserName", errors);
+        RequireValue(options.ServiceAccountPassword, "ServiceAccountPassword", errors);
     }
 
     private static void ValidateCertificateTrust(ActiveDirectoryOptions options, List<string> errors)

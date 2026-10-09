@@ -1,4 +1,4 @@
-# API altyapısı (5. gün) ve giriş (7–8. gün)
+# API altyapısı (5. gün), giriş (7–8. gün) ve oturum (9. gün)
 
 Kod: `src/EnterpriseInventory.Api`. Testler: `tests/EnterpriseInventory.IntegrationTests/Api`.
 
@@ -31,18 +31,21 @@ Kod: `src/EnterpriseInventory.Api`. Testler: `tests/EnterpriseInventory.Integrat
 - Her endpoint, ayrıca belirtilmedikçe **oturum açmış ve `Administrator` rolüne sahip** kullanıcı ister
   (fallback policy). Hiçbir endpoint'e uymayan istekler de buna dahildir: oturumsuz istek, adres var olmasa
   bile `401` alır.
-- Anonim erişim yalnızca `AllowAnonymous` ile açılır. Şu an yalnızca `live`, `ready` ve `POST /api/auth/login`
-  anonimdir; bir test bu listeyi denetler, yeni bir anonim endpoint eklenirse test kırılır.
+- Anonim erişim yalnızca `AllowAnonymous` ile açılır. Şu an yalnızca `live`, `ready`, `GET /api/auth/csrf` ve
+  `POST /api/auth/login` anonimdir; bir test bu listeyi denetler, yeni bir anonim endpoint eklenirse test kırılır.
 - API giriş sayfasına yönlendirmez; oturum yoksa `401`, yetki yoksa `403` döner.
-- Oturum çerezi `__Host-EnterpriseInventory`: HttpOnly, Secure, SameSite=Strict, kalıcı değil, 20 dakika
-  işlem yapılmazsa geçersiz. Yalnızca girişte `Bim_Envanter` üyelerine verilir (aşağıya bakın). Sunucu taraflı
-  oturum, çıkış ve CSRF koruması 9. günde eklenecek.
+- Oturum çerezi `__Host-EnterpriseInventory`: HttpOnly, Secure, SameSite=Strict, kalıcı değil. Yalnızca girişte
+  `Bim_Envanter` üyelerine verilir ve sunucudaki bir oturuma bağlıdır; oturum 20 dakika işlem yapılmazsa, 8 saat
+  dolunca, çıkışta veya AD yetkisi kalkınca biter. Ayrıntı: [`session-security.md`](session-security.md).
+- Durum değiştiren her istek (GET/HEAD/OPTIONS/TRACE dışı) `X-CSRF-TOKEN` başlığında geçerli bir CSRF token'ı
+  ister; yoksa `400` `csrf_invalid` "Güvenlik doğrulaması başarısız oldu." döner.
 - React sayfaları API'den sunulmaya başlandığında (giriş ekranı dahil) statik dosyalar ayrıca anonim
   erişime açılacak.
 
 ## Giriş: `POST /api/auth/login`
 
-Anonim, yalnızca JSON (`application/json`, en fazla 8 KB), istemci adresi başına deneme limitli.
+Anonim, yalnızca JSON (`application/json`, en fazla 8 KB), istemci adresi başına deneme limitli. Önce
+`GET /api/auth/csrf` ile alınan token `X-CSRF-TOKEN` başlığında gönderilir.
 
 ```json
 { "userName": "ayse.yilmaz", "password": "…" }
@@ -50,7 +53,8 @@ Anonim, yalnızca JSON (`application/json`, en fazla 8 KB), istemci adresi baş�
 
 | Durum | Yanıt | `code` |
 | --- | --- | --- |
-| Başarılı (`Bim_Envanter` üyesi) | `200` `{ "userName", "displayName", "roles": ["Administrator"] }` ve oturum çerezi | — |
+| Başarılı (`Bim_Envanter` üyesi) | `200` `{ "userName", "displayName", "roles": ["Administrator"], "csrfToken" }` ve oturum çerezi | — |
+| CSRF token'ı eksik veya geçersiz | `400` "Güvenlik doğrulaması başarısız oldu." | `csrf_invalid` |
 | Eksik/hatalı alan | `400` ValidationProblem, alan bazında Türkçe mesaj (`errors.userName`, `errors.password`) | — |
 | Kullanıcı adı veya parola hatalı, ya da hesap kilitli | `401` "Kullanıcı adı veya parola hatalı." | `invalid_credentials` |
 | Hesap pasif, süresi dolmuş, parola değişmeli | `403` "Hesabınızla şu anda giriş yapılamıyor." | `account_unavailable` |
@@ -60,7 +64,19 @@ Anonim, yalnızca JSON (`application/json`, en fazla 8 KB), istemci adresi baş�
 | Deneme limiti aşıldı | `429` ve `Retry-After` | — |
 
 Ret yanıtlarında çerez verilmez. Akışın ayrıntısı, AD hata kodları ve grup politikası:
-[`active-directory.md`](active-directory.md#giriş-7-gün).
+[`active-directory.md`](active-directory.md#giriş-7-gün). CSRF token'ı kullanıcıya bağlı olduğu için girişten
+sonraki isteklerde yanıttaki `csrfToken` kullanılır.
+
+## Oturum: `GET /api/auth/csrf`, `GET /api/auth/me`, `POST /api/auth/logout`
+
+| Adres | Erişim | Yanıt |
+| --- | --- | --- |
+| `GET /api/auth/csrf` | Anonim | `200` `{ "token": "…" }` ve CSRF çerezi `__Host-EnterpriseInventory.Csrf`. Token o anki kullanıcıya (veya oturumsuz isteğe) bağlıdır. |
+| `GET /api/auth/me` | Administrator | `200` `{ "userName", "displayName", "roles" }`; oturum yoksa veya bittiyse `401`. |
+| `POST /api/auth/logout` | Administrator, CSRF token'ı | `204`; oturum sunucuda biter, çerez silinir, `SignedOut` audit kaydı yazılır. |
+
+Web uygulaması token'ı yalnızca bellekte tutar (localStorage/sessionStorage kullanılmaz). Kurallar ve testler:
+[`session-security.md`](session-security.md).
 
 ## Hata yanıtları
 

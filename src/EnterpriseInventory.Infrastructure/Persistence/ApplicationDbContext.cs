@@ -28,6 +28,8 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
 
     public DbSet<AdminUser> AdminUsers => Set<AdminUser>();
 
+    public DbSet<UserSession> UserSessions => Set<UserSession>();
+
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
     public override int SaveChanges(bool acceptAllChangesOnSuccess)

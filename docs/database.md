@@ -1,4 +1,4 @@
-# Veritabanı (4. gün)
+# Veritabanı (4. gün; 9. günde `UserSessions`)
 
 EF Core Code First, SQL Server. Kod: `src/EnterpriseInventory.Infrastructure/Persistence`.
 Testler: `tests/EnterpriseInventory.IntegrationTests/Persistence`.
@@ -6,7 +6,7 @@ Testler: `tests/EnterpriseInventory.IntegrationTests/Persistence`.
 ## Tasarım
 
 - **Tablolar:** `Assets`, `AssetAssignments`, `Brands`, `AssetModels`, `Cities`, `Departments`, `Locations`,
-  `Employees`, `AdminUsers`, `AuditLogs`. Enum'lar `int` olarak saklanır ve `CHECK` ile sınırlanır.
+  `Employees`, `AdminUsers`, `UserSessions`, `AuditLogs`. Enum'lar `int` olarak saklanır ve `CHECK` ile sınırlanır.
 - **Eşzamanlılık:** Demirbaş, tanım (marka, model, şehir, departman, lokasyon) ve çalışan kayıtlarında
   `RowVersion` (`rowversion`) vardır. Eski bir kopya kaydedilirse EF Core `DbUpdateConcurrencyException` atar;
   API bunu 13. günde HTTP 409'a çevirecek. Zimmetlerin kendi `RowVersion`'ı yoktur, demirbaşın parçasıdır:
@@ -16,9 +16,14 @@ Testler: `tests/EnterpriseInventory.IntegrationTests/Persistence`.
 - **Audit alanları:** `CreatedAt/By`, `UpdatedAt/By` kayıt sırasında `AuditableEntityInterceptor` tarafından
   oturum açmış kullanıcıyla doldurulur. Saatler UTC'dir. Oturum açmış kullanıcı yoksa audit alanı olmayan
   tablolar dahil hiçbir değişiklik kaydedilmez (anonim yazma yok). Tek istisna girişin kendisidir: AD parolayı
-  ve grup üyeliğini doğruladıktan sonra `AdminUserStore`, yalnızca o kaydetme işlemi için giriş yapan kullanıcıyı
-  kaydedici olarak tanıtır (`SignInIdentity`). `AdminUsers` kaydı ve `AuditLogs`'daki `SignedIn` satırı aynı
-  transaction'da yazılır.
+  ve grup üyeliğini doğruladıktan sonra `UserSessionService`, yalnızca o kaydetme işlemi için giriş yapan kullanıcıyı
+  kaydedici olarak tanıtır (`SignInIdentity`). `AdminUsers` kaydı, yeni `UserSessions` satırı ve `AuditLogs`'daki
+  `SignedIn` satırı aynı transaction'da yazılır.
+- **Oturumlar (`UserSessions`):** Her giriş bir satırdır: yöneticinin kaydı, oturum anahtarının yalnızca SHA-256
+  özeti (`KeyHash`, `binary(32)`, benzersiz), başlangıç, son işlem, mutlak bitiş, son AD kontrolü ve son başarısız
+  kontrol zamanları, istemci adresi, bitiş zamanı ve nedeni (`EndReason` 1–6). Oturumlar silinmez, bitirilir;
+  bitmiş satırlar geçmiş olarak kalır (temizleme politikası yayın aşamasında belirlenecek). Kurallar:
+  [`session-security.md`](session-security.md).
 - **Silme yok:** Tüm ilişkiler `ON DELETE NO ACTION`. Demirbaş arşivlenir (`IsDeleted`), zimmet geçmişi ve
   tanımlar silinmez. Arşivlenen kayıtlar için global sorgu filtresi yoktur; listeler `IsDeleted = 0`
   koşulunu kendisi ekler, böylece geçmiş ve raporlar arşivi görmeye devam eder.
@@ -36,6 +41,7 @@ Veritabanının kendisi şu kuralları uygular (uygulamayı atlayan bir SQL de r
 | İade, zimmetten önce olamaz; iade tarihi ile iadeyi alan birlikte dolu | `CK_AssetAssignments_ReturnAfterAssign`, `CK_AssetAssignments_ReturnedByWithReturn` |
 | Marka, şehir, departman adları benzersiz; model adı markada, lokasyon adı şehirde benzersiz | `IX_*_Name` indeksleri |
 | Durum, tür ve audit işlem değerleri geçerli | `CK_Assets_Status`, `CK_Assets_AssetType`, `CK_AuditLogs_Action` |
+| Oturum anahtarı özeti benzersiz; bitiş zamanı ile bitiş nedeni birlikte dolu; geçerli bitiş nedeni; son işlem ve mutlak bitiş başlangıçtan sonra | `IX_UserSessions_KeyHash`, `CK_UserSessions_Ended`, `CK_UserSessions_EndReason`, `CK_UserSessions_Times` |
 
 ## Collation
 

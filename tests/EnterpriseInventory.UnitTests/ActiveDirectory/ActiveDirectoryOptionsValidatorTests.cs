@@ -35,6 +35,8 @@ public sealed class ActiveDirectoryOptionsValidatorTests : IDisposable
     [InlineData(nameof(ActiveDirectoryOptions.ServerFqdn), "ActiveDirectory:ServerFqdn is required")]
     [InlineData(nameof(ActiveDirectoryOptions.BaseDn), "ActiveDirectory:BaseDn is required")]
     [InlineData(nameof(ActiveDirectoryOptions.AllowedGroupSid), "ActiveDirectory:AllowedGroupSid is required")]
+    [InlineData(nameof(ActiveDirectoryOptions.ServiceAccountUserName), "ActiveDirectory:ServiceAccountUserName is required")]
+    [InlineData(nameof(ActiveDirectoryOptions.ServiceAccountPassword), "ActiveDirectory:ServiceAccountPassword is required")]
     public void Required_settings_must_be_present(string property, string expected)
     {
         var options = ValidOptions();

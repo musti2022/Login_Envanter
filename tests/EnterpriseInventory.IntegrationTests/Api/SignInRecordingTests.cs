@@ -27,7 +27,7 @@ public class SignInRecordingTests(SqlServerDatabaseFixture database)
             Assert.Equal(HttpStatusCode.Unauthorized, before.StatusCode);
         }
 
-        using var login = await client.PostAsJsonAsync(LoginEndpointTests.Login, new { userName = "dev.admin", password = LoginEndpointTests.FakePassword });
+        using var login = await client.PostLoginAsync(new { userName = "dev.admin", password = LoginEndpointTests.FakePassword });
 
         Assert.Equal(HttpStatusCode.OK, login.StatusCode);
         var user = await login.Content.ReadFromJsonAsync<JsonElement>();
@@ -35,8 +35,7 @@ public class SignInRecordingTests(SqlServerDatabaseFixture database)
         Assert.Equal("Geliştirici Yönetici", user.GetProperty("displayName").GetString());
         Assert.Equal(["Administrator"], user.GetProperty("roles").EnumerateArray().Select(r => r.GetString()));
 
-        var cookie = Assert.Single(login.Headers.GetValues("Set-Cookie"));
-        Assert.StartsWith("__Host-EnterpriseInventory=", cookie, StringComparison.Ordinal);
+        var cookie = Assert.Single(login.Headers.GetValues("Set-Cookie"), c => c.StartsWith("__Host-EnterpriseInventory=", StringComparison.Ordinal));
         var attributes = cookie.Split(';', StringSplitOptions.TrimEntries).Skip(1).Select(a => a.ToLowerInvariant()).ToList();
         Assert.Contains("path=/", attributes);
         Assert.Contains("secure", attributes);
@@ -58,7 +57,7 @@ public class SignInRecordingTests(SqlServerDatabaseFixture database)
         for (var signIn = 0; signIn < 2; signIn++)
         {
             using var client = api.CreateAnonymousClient();
-            using var login = await client.PostAsJsonAsync(LoginEndpointTests.Login, new { userName = "DEV.AUDIT", password = LoginEndpointTests.FakePassword });
+            using var login = await client.PostLoginAsync(new { userName = "DEV.AUDIT", password = LoginEndpointTests.FakePassword });
             Assert.Equal(HttpStatusCode.OK, login.StatusCode);
             correlationIds.Add(login.Headers.GetValues("X-Correlation-ID").Single());
         }
@@ -87,7 +86,7 @@ public class SignInRecordingTests(SqlServerDatabaseFixture database)
         try
         {
             var logins = await Task.WhenAll(clients.Select(client =>
-                client.PostAsJsonAsync(LoginEndpointTests.Login, new { userName = "dev.parallel", password = LoginEndpointTests.FakePassword })));
+                client.PostLoginAsync(new { userName = "dev.parallel", password = LoginEndpointTests.FakePassword })));
 
             Assert.All(logins, login => Assert.Equal(HttpStatusCode.OK, login.StatusCode));
             foreach (var login in logins)
@@ -111,7 +110,7 @@ public class SignInRecordingTests(SqlServerDatabaseFixture database)
         await using var api = new TestApiFactory(database.ConnectionString, useTestAuthentication: false, settings: TestActiveDirectory.Settings());
         using var client = api.CreateAnonymousClient();
 
-        using var login = await client.PostAsJsonAsync(LoginEndpointTests.Login, new { userName = "ayse.admin", password = TestActiveDirectory.UserPassword });
+        using var login = await client.PostLoginAsync(new { userName = "ayse.admin", password = TestActiveDirectory.UserPassword });
 
         Assert.Equal(HttpStatusCode.OK, login.StatusCode);
         var user = await login.Content.ReadFromJsonAsync<JsonElement>();

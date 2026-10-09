@@ -1,4 +1,4 @@
-# Active Directory (6. gün: LDAPS ve TLS, 7. gün: giriş, 8. gün: Bim_Envanter yetkisi)
+# Active Directory (6. gün: LDAPS ve TLS, 7. gün: giriş, 8. gün: Bim_Envanter yetkisi, 9. gün: yeniden kontrol)
 
 Kod: `src/EnterpriseInventory.Infrastructure/ActiveDirectory`, `src/EnterpriseInventory.Application/Authentication`,
 `src/EnterpriseInventory.Api/Auth`. Testler: `tests/EnterpriseInventory.UnitTests/ActiveDirectory`,
@@ -99,10 +99,10 @@ Başarılı girişte:
   ayrı tutulur. Aynı kullanıcının eşzamanlı ilk girişleri tek kayıt oluşturur (benzersiz indeks çakışmasında
   kayıt bir kez daha okunur).
 - Aynı transaction içinde `AuditLogs`'a `SignedIn` kaydı yazılır (kullanıcı, istemci adresi, correlation ID).
-- Tarayıcıya `__Host-EnterpriseInventory` oturum çerezi verilir: HttpOnly, Secure, SameSite=Strict, `Path=/`,
-  tarayıcı kapanınca silinir, 20 dakika işlem yapılmazsa geçersizleşir. Çerez kullanıcıya `Administrator`
-  rolünü verir. Sunucu taraflı oturum, çıkış, mutlak oturum süresi, CSRF koruması ve düzenli yetki kontrolü
-  9. günde eklenir.
+- Aynı transaction içinde sunucu taraflı oturum (`UserSessions`) açılır ve tarayıcıya `__Host-EnterpriseInventory`
+  oturum çerezi verilir: HttpOnly, Secure, SameSite=Strict, `Path=/`, tarayıcı kapanınca silinir. Çerez
+  kullanıcıya `Administrator` rolünü verir. Boşta kalma ve mutlak süre, çıkış, CSRF koruması ve düzenli yetki
+  kontrolü: [`session-security.md`](session-security.md).
 
 ## Bim_Envanter yetkisi (8. gün)
 
@@ -119,9 +119,19 @@ Başarılı girişte:
 - Üye olmayan kullanıcı parolası doğru olsa da `403` alır ve çerez verilmez. Çerez olmadan tüm korumalı API uçları
   `401` döner (varsayılan olarak kapalı yetkilendirme, bkz. [`api.md`](api.md)). SignalR Hub'ları eklendiğinde aynı
   kural onlara da uygulanır.
-- Kullanıcı aramaları girişi yapan kullanıcının kendi kimliğiyle yapılır; servis hesabı girişte kullanılmaz.
-  Servis hesabı 9. günde, açık oturumların grup üyeliğini düzenli aralıklarla yeniden kontrol etmek için
-  kullanılacak.
+- Girişteki aramalar girişi yapan kullanıcının kendi kimliğiyle yapılır; servis hesabı girişte kullanılmaz.
+
+## Açık oturumların yeniden kontrolü (9. gün)
+
+Açık bir oturumda `Session:AccessRecheckMinutes` (varsayılan 5) dolunca uygulama **servis hesabıyla** LDAPS üzerinden
+bind olur ve kullanıcıyı girişte kaydedilen `objectGUID` ile `BaseDn` altında arar (GUID LDAP filtresine bayt bayt
+kaçışlanır). Hesap bulunamazsa, pasifse, `accountExpires` geçmişteyse veya girişteki `NestedGroupPolicy` kuralıyla
+artık `Bim_Envanter` üyesi değilse oturum hemen biter. AD'ye ulaşılamazsa, servis hesabı reddedilirse veya yanıt
+anlaşılamazsa oturum `Session:DirectoryOutageGraceMinutes` boyunca sürer ve kontrol dakikada bir yeniden denenir.
+Aynı sertifika kuralları ve süre sınırı geçerlidir. Kurallar ve testler: [`session-security.md`](session-security.md).
+
+Servis hesabı adı `ServiceAccountUserName` olarak `svc.envanter` (`@Domain` eklenir), `svc.envanter@ornek.local` veya
+DN biçiminde yazılabilir. Hesabın yalnızca okuma yetkisi olmalıdır; parolası loga yazılmaz.
 
 ## Ayarlar ve başlangıç denetimi
 
@@ -137,7 +147,7 @@ neden hatalı olduğunu yazarak durur.
 | `BaseDn` | DN biçiminde ve domain'in içinde olmalı, ör. `DC=ornek,DC=local` veya `OU=Personel,DC=ornek,DC=local`. |
 | `AllowedGroupSid` | `Bim_Envanter` grubunun SID'i, `S-1-5-21-…-RID` biçiminde. Grup adı yetki için kullanılmaz. |
 | `NestedGroupPolicy` | Varsayılanı yoktur, açıkça `DirectMembershipOnly` veya `IncludeNested` yazılmalı (bkz. [8. gün](#bim_envanter-yetkisi-8-gün)). |
-| `ServiceAccountUserName` / `ServiceAccountPassword` | Düzenli yetki kontrolü ve çalışan araması için (9. gün ve sonrası). |
+| `ServiceAccountUserName` / `ServiceAccountPassword` | **Zorunlu.** Açık oturumların düzenli yetki kontrolü (9. gün) ve ileride çalışan araması için okuma yetkili hesap. Parola repoya yazılmaz; üretimde ortam değişkeni veya güvenli yapılandırma ile verilir. |
 | `TrustedCaCertificatePath` | İsteğe bağlı; domain controller sertifikasının zincirlendiği **kök** CA'nın PEM/DER dosyası. Dosya yoksa, okunamıyorsa, CA sertifikası değilse veya kendinden imzalı kök değilse (ara CA) uygulama başlamaz. |
 | `CheckCertificateRevocation` | Varsayılan `true`. |
 | `ConnectTimeoutSeconds` / `OperationTimeoutSeconds` | TCP+TLS için 1–60 sn (varsayılan 10) / her bind veya arama için 1–120 sn (varsayılan 15). Bir girişin tamamı ikisinin toplamıyla sınırlıdır. |
@@ -183,7 +193,7 @@ ayrılmış ad), kendi test CA'sı ile imzalanmış `dc1.envanter.test` LDAPS se
 oluşturur. Parolalar rastgele üretilir ve repo dışında kalır.
 
 Samba AD test domain'inde (bkz. betiğin kullanıcı tablosu) ve testlerin kendi kurduğu sunucularda koşturulan
-testler; hepsi geçti (birim 228, entegrasyon 138 test, SQL Server ve Samba AD açıkken):
+testler; hepsi geçti (9. gün sonunda birim 270, entegrasyon 176 test, SQL Server ve Samba AD açıkken):
 
 | Test | Nerede | Sonuç |
 | --- | --- | --- |
@@ -196,6 +206,7 @@ testler; hepsi geçti (birim 228, entegrasyon 138 test, SQL Server ve Samba AD a
 | **7. gün** API: Türkçe alan hataları (`400`), form gönderimi reddi, 8 KB üstü gövde `413` (Kestrel), erişilemeyen AD `503`, deneme limiti `429` + `Retry-After`, ret yanıtlarında çerez yok, parola log dosyasında yok; başarılı girişte çerez özellikleri (`__Host-`, Secure, HttpOnly, SameSite=Strict, kalıcı değil), çerezle korumalı uca erişim, `AdminUsers` tek kayıt + her giriş için `SignedIn` audit kaydı (correlation ID ile) | Integration (SQL Server ile) | Geçti |
 | **8. gün** Samba AD: üye olmayan (`mehmet.user`), yalnızca aynı adlı tuzak gruba üye (`decoy.user`) ve `DirectMembershipOnly` altında iç içe üye (`nested.user`) parolası doğru olsa da `403`; doğrudan üye ve birincil grubu `Bim_Envanter` olan iki politikada da girer; iç içe üye yalnızca `IncludeNested` ile girer; SID tuzak gruba çevrilince yetki onu izler (ad değil SID); `BaseDn` dışındaki üye reddedilir; var olmayan SID ile kimse giremez | Integration | Geçti |
 | **İnceleme düzeltmeleri** Samba AD: başka hesabın UPN'i `clash.member` adını sahiplendiğinde o hesabın parolasıyla `clash.member` olarak girilemez (`401`, logda uyarı). Birim: "Who am I?" yanıtı başka hesap (`u:` ve `dn:` biçimi) → `401`, anlaşılmaz yanıt veya `userAccountControl` yok → `503`, kilitli hesap `401` ve maskelenmiş kullanıcı adı, kayıt hatası → `503` oturumsuz, ara CA sabitlenemez. Loopback: yanıt vermeyen bind istemci iptalinde hemen durur, giriş süre sınırında `503` olur. API: eşzamanlı 8 ilk giriş tek `AdminUsers` kaydı, veritabanı yokken `503 sign_in_unavailable`, Samba AD ile parola log dosyasında yok | Unit + Integration | Geçti |
+| **9. gün** Samba AD, servis hesabıyla yeniden kontrol: doğrudan, birincil grup ve iç içe (politikaya göre) üye `Allowed`; üye olmayan ve tuzak grup üyesi `NotAuthorized`; pasif, süresi dolmuş hesap; bilinmeyen GUID ve `BaseDn` dışı `AccountNotFound`; yanlış servis parolası `DirectoryUnavailable` (parola logda yok) | Integration | Geçti |
 | Kasıtlı bozma (mutation) denemeleri: üyelik kontrolünü kaldırmak, grubu adla eşleştirmek, politikaları karıştırmak, boş parolayı göndermek, `BaseDn` sınırını kaldırmak, sertifika ad kontrolünü veya kullanım amacı kontrolünü kaldırmak, eşzamanlı ilk girişteki yeniden denemeyi kaldırmak testleri kırdı | — | Yakalandı |
 
 ### Ortam engeli: şirketin gerçek AD'si
@@ -217,3 +228,8 @@ doğrulanmalı:
    `NestedGroupPolicy` kararı verilmeli.
 7. Bir üye, bir üye olmayan, bir pasif ve (varsa) bir iç içe üye hesapla giriş denenmeli; kullanıcıların kendi
    `memberOf`/`tokenGroups` değerlerini okuyabildiği (AD varsayılanı) doğrulanmalı.
+8. Servis hesabı oluşturulmalı (yalnızca okuma, parolası süresiz veya yönetilen); `BaseDn` altındaki kullanıcıların
+   `objectGUID`, `userAccountControl`, `accountExpires`, `memberOf`, `primaryGroupID` özniteliklerini okuyabildiği
+   doğrulanmalı. `IncludeNested` seçilirse başka kullanıcıların `tokenGroups` değerini okuyabilmesi için hesabın
+   **Windows Authorization Access Group** üyesi olması gerekebilir (Samba'da bu izin varsayılan olarak var; gerçek AD'de denenmedi).
+9. Açık bir oturumda kullanıcı gruptan çıkarılıp en geç `AccessRecheckMinutes` sonra oturumun bittiği denenmeli.

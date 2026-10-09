@@ -54,13 +54,15 @@ public enum SignInOutcome
     SignInUnavailable = 6,
 }
 
+/// <param name="Session">The server-side session started for a successful sign-in.</param>
 public sealed record SignInResult(
     SignInOutcome Outcome,
     DirectoryAccount? Account = null,
-    IDictionary<string, string[]>? Errors = null);
+    IDictionary<string, string[]>? Errors = null,
+    StartedSession? Session = null);
 
 /// <summary>
-/// Signs a user in against the directory and records the administrator's sign-in. Logs say who tried and why it
+/// Signs a user in against the directory and starts a server-side session. Logs say who tried and why it
 /// failed; the password never appears in a log, an exception or the database. The typed user name is logged in
 /// full only once the directory has accepted the password: before that it may be a mistyped password, so only its
 /// first characters and length are kept.
@@ -68,7 +70,7 @@ public sealed record SignInResult(
 public sealed partial class SignInHandler(
     IValidator<SignInRequest> validator,
     IDirectoryService directory,
-    IAdminUserStore adminUsers,
+    IUserSessionService sessions,
     IRequestContext requestContext,
     ILogger<SignInHandler> logger)
 {
@@ -87,9 +89,10 @@ public sealed partial class SignInHandler(
 
         if (result is { Status: DirectorySignInStatus.Succeeded, Account: { } account })
         {
+            StartedSession session;
             try
             {
-                await adminUsers.RecordSignInAsync(account, cancellationToken).ConfigureAwait(false);
+                session = await sessions.StartAsync(account, cancellationToken).ConfigureAwait(false);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -99,7 +102,7 @@ public sealed partial class SignInHandler(
             }
 
             LogSignedIn(account.SamAccountName, requestContext.ClientAddress);
-            return new SignInResult(SignInOutcome.Succeeded, account);
+            return new SignInResult(SignInOutcome.Succeeded, account, Session: session);
         }
 
         var outcome = result.Status switch

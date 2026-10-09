@@ -4,12 +4,13 @@
 üzerinden LDAPS ile yapılır ve yalnızca `Bim_Envanter` güvenlik grubunun üyeleri uygulamaya girebilir.
 Proje gereksinimleri ve 40 günlük plan: [`proje_talimatlari.md`](proje_talimatlari.md).
 
-> **Durum:** 8. gün — solution iskeleti, Türkçe arayüz kabuğu, domain modeli, SQL Server şeması (EF Core migration,
+> **Durum:** 9. gün — solution iskeleti, Türkçe arayüz kabuğu, domain modeli, SQL Server şeması (EF Core migration,
 > RowVersion, kısıtlar), API altyapısı (health endpoint'leri, varsayılan olarak kapalı yetkilendirme, hata yanıtları,
-> güvenlik başlıkları, rate limiting), Active Directory LDAPS bağlantısı (sıkı TLS sertifika doğrulaması) ve giriş API'si
-> (AD parola doğrulaması, `Bim_Envanter` grup SID kontrolü, oturum çerezi, giriş audit kaydı). AD entegrasyonu Samba
-> test domain'i ile test edildi; şirketin gerçek AD'si ile henüz denenmedi. Giriş ekranı, envanter ve zimmet ekranları
-> henüz yok.
+> güvenlik başlıkları, rate limiting), Active Directory LDAPS bağlantısı (sıkı TLS sertifika doğrulaması), giriş API'si
+> (AD parola doğrulaması, `Bim_Envanter` grup SID kontrolü, giriş audit kaydı) ve oturum güvenliği (sunucu taraflı
+> oturum, CSRF koruması, çıkış, boşta kalma ve mutlak süre, açık oturumların AD'de düzenli yeniden kontrolü, kalıcı
+> Data Protection anahtarları). AD entegrasyonu Samba test domain'i ile test edildi; şirketin gerçek AD'si ile henüz
+> denenmedi. Giriş ekranı, envanter ve zimmet ekranları henüz yok.
 
 ## Teknolojiler
 
@@ -41,7 +42,8 @@ deploy/                                IIS yayın dosyaları
 Katman bağımlılık kuralları için bkz. [`docs/architecture.md`](docs/architecture.md); veritabanı tasarımı, migration
 komutları ve SQL hesap yetkileri için [`docs/database.md`](docs/database.md); health endpoint'leri, yetkilendirme, hata
 yanıtları, güvenlik başlıkları ve giriş API'si için [`docs/api.md`](docs/api.md); Active Directory LDAPS bağlantısı,
-sertifika doğrulaması, giriş akışı ve grup yetkisi için [`docs/active-directory.md`](docs/active-directory.md).
+sertifika doğrulaması, giriş akışı ve grup yetkisi için [`docs/active-directory.md`](docs/active-directory.md); oturum,
+CSRF, çıkış ve zaman aşımı kuralları için [`docs/session-security.md`](docs/session-security.md).
 
 ## Gereksinimler
 
@@ -116,11 +118,14 @@ belli değildir ve **repoya hiçbir gizli değer eklenmez**.
 | `ActiveDirectory:BaseDn` | Arama kökü, ör. `DC=ornek,DC=local` (domain'in içinde olmalı) |
 | `ActiveDirectory:AllowedGroupSid` | `Bim_Envanter` grubunun SID'i (yetki kontrolü isim değil SID üzerinden yapılır) |
 | `ActiveDirectory:NestedGroupPolicy` | İç içe grup politikası; açıkça yazılmalı, örnek ayarlarda `DirectMembershipOnly` |
-| `ActiveDirectory:ServiceAccountUserName` / `ServiceAccountPassword` | Yetki tekrar kontrolü ve çalışan araması için servis hesabı |
+| `ActiveDirectory:ServiceAccountUserName` / `ServiceAccountPassword` | Zorunlu; açık oturumların yetki tekrar kontrolü ve çalışan araması için yalnızca okuma yetkili servis hesabı |
 | `ActiveDirectory:TrustedCaCertificatePath` | İsteğe bağlı; doluysa DC sertifikası yalnızca bu CA'ya zincirlenmeli |
 | `ActiveDirectory:CheckCertificateRevocation` | Sertifika iptal kontrolü; varsayılan `true` |
 | `RateLimiting:PermitLimit` / `WindowSeconds` | Kullanıcı başına istek limiti; varsayılan 60 saniyede 300 |
 | `RateLimiting:LoginPermitLimit` / `LoginWindowSeconds` | IP başına giriş denemesi limiti; varsayılan 60 saniyede 10 |
+| `Session:IdleTimeoutMinutes` / `AbsoluteTimeoutHours` | Oturum boşta kalma ve mutlak süresi; varsayılan 20 dakika / 8 saat |
+| `Session:AccessRecheckMinutes` / `DirectoryOutageGraceMinutes` | AD yetki tekrar kontrolü aralığı ve AD kesintisinde oturumun ek süresi; varsayılan 5 / 15 dakika |
+| `DataProtection:KeysDirectory` | Oturum çerezi anahtarlarının klasörü; Development dışında zorunlu, tam yol ([ayrıntı](docs/session-security.md#data-protection-anahtarları)) |
 
 AD ayarları uygulama başlarken denetlenir; eksik, hatalı veya `CHANGE-ME` içeren değerlerle uygulama başlamaz
 (bkz. [`docs/active-directory.md`](docs/active-directory.md#ayarlar-ve-başlangıç-denetimi)).

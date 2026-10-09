@@ -32,4 +32,9 @@ public static class DomainErrors
     {
         public const string Inactive = "Employee.Inactive";
     }
+
+    public static class Session
+    {
+        public const string Ended = "Session.Ended";
+    }
 }

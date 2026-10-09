@@ -1,6 +1,6 @@
 namespace EnterpriseInventory.Infrastructure.ActiveDirectory;
 
-/// <summary>A user account as read from the directory after the user proved their password.</summary>
+/// <summary>A user account as read from the directory.</summary>
 internal sealed record DirectoryUserEntry(
     string DistinguishedName,
     Guid ObjectGuid,
@@ -9,7 +9,8 @@ internal sealed record DirectoryUserEntry(
     string DisplayName,
     int UserAccountControl,
     IReadOnlyList<string> MemberOf,
-    int? PrimaryGroupId);
+    int? PrimaryGroupId,
+    DateTimeOffset? AccountExpiresAt = null);
 
 /// <summary>
 /// Decides membership of the allowed group, always by the group's SID from configuration, never by its name: a

@@ -14,12 +14,13 @@ namespace EnterpriseInventory.Infrastructure.ActiveDirectory;
 internal sealed partial class LdapDirectoryService(
     ILdapConnectionFactory connectionFactory,
     IOptions<ActiveDirectoryOptions> options,
+    TimeProvider timeProvider,
     ILogger<LdapDirectoryService> logger) : IDirectoryService
 {
     private const int AccountDisabledFlag = 0x2;
 
     private static readonly string[] UserAttributes =
-        ["objectGUID", "objectSid", "sAMAccountName", "displayName", "userAccountControl", "memberOf", "primaryGroupID"];
+        ["objectGUID", "objectSid", "sAMAccountName", "displayName", "userAccountControl", "memberOf", "primaryGroupID", "accountExpires"];
 
     private static readonly string[] TokenGroupsAttribute = ["tokenGroups"];
     private static readonly string[] NoAttributes = ["1.1"];
@@ -107,6 +108,82 @@ internal sealed partial class LdapDirectoryService(
         }
     }
 
+    public async Task<DirectoryAccessStatus> CheckAccessAsync(Guid objectGuid, CancellationToken cancellationToken)
+    {
+        var settings = options.Value;
+        var limit = TimeSpan.FromSeconds(settings.ConnectTimeoutSeconds + settings.OperationTimeoutSeconds);
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(limit);
+        try
+        {
+            using var connection = await connectionFactory.ConnectAsync(deadline.Token).ConfigureAwait(false);
+            try
+            {
+                await connection.BindAsync(ServiceAccountBindName(settings), settings.ServiceAccountPassword, deadline.Token).ConfigureAwait(false);
+            }
+            catch (LdapException ex) when (ex.ResultCode == LdapException.InvalidCredentials)
+            {
+                LogServiceAccountRefused(settings.ServiceAccountUserName, BindFailures.FromDiagnosticMessage(ex.LdapErrorMessage));
+                return DirectoryAccessStatus.DirectoryUnavailable;
+            }
+
+            var filter = $"(&(objectCategory=person)(objectClass=user)(objectGUID={DirectoryValues.EscapeFilterBytes(objectGuid.ToByteArray())}))";
+            var result = await connection.SearchAsync(settings.BaseDn, LdapConnection.ScopeSub, filter, UserAttributes, deadline.Token)
+                .ConfigureAwait(false);
+            if (result.Entries.Count == 0)
+            {
+                LogAccessCheckAccountNotFound(objectGuid, settings.BaseDn, result.SkippedReferrals);
+                return DirectoryAccessStatus.AccountNotFound;
+            }
+
+            if (result.Entries.Count > 1)
+            {
+                throw new InvalidDataException($"{result.Entries.Count} accounts have the objectGUID {objectGuid}.");
+            }
+
+            var user = ReadUser(result.Entries[0]);
+            if ((user.UserAccountControl & AccountDisabledFlag) != 0)
+            {
+                return DirectoryAccessStatus.AccountDisabled;
+            }
+
+            if (user.AccountExpiresAt is { } expiresAt && expiresAt <= timeProvider.GetUtcNow())
+            {
+                return DirectoryAccessStatus.AccountExpired;
+            }
+
+            return await IsAllowedAsync(connection, settings, user, deadline.Token).ConfigureAwait(false)
+                ? DirectoryAccessStatus.Allowed
+                : DirectoryAccessStatus.NotAuthorized;
+        }
+        catch (OperationCanceledException) when (deadline.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        {
+            LogDirectoryUnavailable(DirectoryFailure.Timeout, $"The access check did not finish within {limit.TotalSeconds:0} seconds.");
+            return DirectoryAccessStatus.DirectoryUnavailable;
+        }
+        catch (DirectoryUnavailableException ex)
+        {
+            LogDirectoryUnavailable(ex.Failure, ex.Message);
+            return DirectoryAccessStatus.DirectoryUnavailable;
+        }
+        catch (LdapException ex)
+        {
+            LogDirectoryError(ex.ResultCode, ex.LdapErrorMessage);
+            return DirectoryAccessStatus.DirectoryUnavailable;
+        }
+        catch (InvalidDataException ex)
+        {
+            LogUnexpectedData(ex.Message);
+            return DirectoryAccessStatus.DirectoryUnavailable;
+        }
+    }
+
+    /// <summary>A logon name is bound as <c>name@Domain</c>; a user principal name or a DN is used as written.</summary>
+    private static string ServiceAccountBindName(ActiveDirectoryOptions settings) =>
+        settings.ServiceAccountUserName.Contains('@', StringComparison.Ordinal) || settings.ServiceAccountUserName.Contains('=', StringComparison.Ordinal)
+            ? settings.ServiceAccountUserName
+            : $"{settings.ServiceAccountUserName}@{settings.Domain}";
+
     private async Task<bool> IsAllowedAsync(
         IDirectoryConnection connection, ActiveDirectoryOptions settings, DirectoryUserEntry user, CancellationToken cancellationToken)
     {
@@ -188,7 +265,26 @@ internal sealed partial class LdapDirectoryService(
             ReadInt(attributes, "userAccountControl")
                 ?? throw new InvalidDataException($"The account {entry.Dn} has no readable userAccountControl."),
             attributes.Find("memberOf")?.StringValueArray ?? [],
-            ReadInt(attributes, "primaryGroupID"));
+            ReadInt(attributes, "primaryGroupID"),
+            ReadAccountExpires(attributes));
+    }
+
+    // accountExpires is a Windows FILETIME; 0 and Int64.MaxValue mean the account never expires.
+    private static DateTimeOffset? ReadAccountExpires(LdapAttributeSet attributes)
+    {
+        var text = attributes.Find("accountExpires")?.StringValue;
+        if (text is null)
+        {
+            return null;
+        }
+
+        if (!long.TryParse(text, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var fileTime)
+            || fileTime < 0)
+        {
+            throw new InvalidDataException($"accountExpires '{text}' is not a valid FILETIME.");
+        }
+
+        return fileTime is 0 or long.MaxValue ? null : DateTimeOffset.FromFileTime(fileTime).ToUniversalTime();
     }
 
     private static int? ReadInt(LdapAttributeSet attributes, string name) =>
@@ -203,6 +299,12 @@ internal sealed partial class LdapDirectoryService(
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "The password typed for {UserName} opened the account {BoundAs} instead; refused. Another account's userPrincipalName probably claims this logon name")]
     private partial void LogBoundToAnotherAccount(string userName, string boundAs);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "The directory refused the service account {ServiceAccount} ({Reason}); signed-in users' access cannot be checked")]
+    private partial void LogServiceAccountRefused(string serviceAccount, DirectorySignInStatus reason);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "No account with objectGUID {ObjectGuid} is under BaseDn {BaseDn} ({SkippedReferrals} referrals not followed); its sessions lose access")]
+    private partial void LogAccessCheckAccountNotFound(Guid objectGuid, string baseDn, int skippedReferrals);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Active Directory is unavailable ({Failure}): {Reason}")]
     private partial void LogDirectoryUnavailable(DirectoryFailure failure, string reason);

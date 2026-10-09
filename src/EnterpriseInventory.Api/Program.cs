@@ -31,6 +31,7 @@ try
 
     builder.Services.AddApiProblemDetails();
     builder.Services.AddApiSecurity();
+    builder.Services.AddApiDataProtection();
     builder.Services.AddApiRateLimiting(builder.Configuration);
     builder.Services.AddHttpContextAccessor();
     builder.Services.AddScoped<ICurrentUser, HttpContextCurrentUser>();
@@ -61,6 +62,9 @@ try
     app.UseAuthentication();
     app.UseRateLimiter();
     app.UseAuthorization();
+
+    // After authorization, so a request that is refused anyway gets its 401 or 403 rather than a CSRF error.
+    app.UseMiddleware<CsrfProtectionMiddleware>();
 
     app.MapApiHealthChecks();
     app.MapAuthEndpoints();

@@ -8,6 +8,29 @@ namespace EnterpriseInventory.Application.Authentication;
 public interface IDirectoryService
 {
     Task<DirectorySignInResult> SignInAsync(string userName, string password, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Checks, with the service account, that a signed-in user may still use the application: the account still
+    /// exists under BaseDn, is enabled and not expired, and is still a member of the allowed group.
+    /// </summary>
+    /// <param name="objectGuid">The user's AD objectGUID, recorded at sign-in.</param>
+    Task<DirectoryAccessStatus> CheckAccessAsync(Guid objectGuid, CancellationToken cancellationToken);
+}
+
+public enum DirectoryAccessStatus
+{
+    Allowed = 0,
+
+    /// <summary>No longer a member of the allowed group.</summary>
+    NotAuthorized = 1,
+    AccountDisabled = 2,
+    AccountExpired = 3,
+
+    /// <summary>The account was deleted or moved outside BaseDn.</summary>
+    AccountNotFound = 4,
+
+    /// <summary>The directory could not be reached or trusted, so access could not be confirmed.</summary>
+    DirectoryUnavailable = 5,
 }
 
 public sealed record DirectorySignInResult(DirectorySignInStatus Status, DirectoryAccount? Account = null)
