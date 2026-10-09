@@ -2,6 +2,7 @@ import type { RouteObject } from 'react-router'
 import { RequireAuth, signInPath } from '../auth/RequireAuth'
 import { AppLayout } from '../layout/AppLayout'
 import { DashboardPage } from '../pages/DashboardPage'
+import { InventoryPage } from '../pages/InventoryPage'
 import { LoginPage } from '../pages/LoginPage'
 import { NotFoundPage } from '../pages/NotFoundPage'
 import { PlaceholderPage } from '../pages/PlaceholderPage'
@@ -18,17 +19,7 @@ export const routes: RouteObject[] = [
         element: <AppLayout />,
         children: [
           { index: true, element: <DashboardPage /> },
-          {
-            path: 'envanter',
-            element: (
-              <PlaceholderPage
-                title="Envanter"
-                description="Demirbaşları listeleyin, arayın ve yönetin."
-                emptyTitle="Henüz demirbaş kaydı yok"
-                emptyDescription="Envanter tablosu; arama, filtreleme ve Excel dışa aktarma ile birlikte sonraki aşamada eklenecek."
-              />
-            ),
-          },
+          { path: 'envanter', element: <InventoryPage /> },
           {
             path: 'zimmetler',
             element: (

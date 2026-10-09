@@ -2,6 +2,7 @@ import { CssBaseline, ThemeProvider } from '@mui/material'
 import { QueryClientProvider, type QueryClient } from '@tanstack/react-query'
 import { useState, type ReactNode } from 'react'
 import { SessionWatcher } from '../auth/SessionWatcher'
+import { PreferencesProvider } from './preferences'
 import { createQueryClient } from './queryClient'
 import { theme } from './theme'
 
@@ -19,7 +20,7 @@ export function AppProviders({ children, queryClient: givenClient }: AppProvider
       <SessionWatcher />
       <ThemeProvider theme={theme}>
         <CssBaseline />
-        {children}
+        <PreferencesProvider>{children}</PreferencesProvider>
       </ThemeProvider>
     </QueryClientProvider>
   )
