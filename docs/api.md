@@ -52,10 +52,11 @@ Anonim, yalnızca JSON (`application/json`, en fazla 8 KB), istemci adresi baş�
 | --- | --- | --- |
 | Başarılı (`Bim_Envanter` üyesi) | `200` `{ "userName", "displayName", "roles": ["Administrator"] }` ve oturum çerezi | — |
 | Eksik/hatalı alan | `400` ValidationProblem, alan bazında Türkçe mesaj (`errors.userName`, `errors.password`) | — |
-| Kullanıcı adı veya parola hatalı | `401` "Kullanıcı adı veya parola hatalı." | `invalid_credentials` |
-| Hesap pasif, kilitli, süresi dolmuş, parola değişmeli | `403` "Hesabınızla şu anda giriş yapılamıyor." | `account_unavailable` |
+| Kullanıcı adı veya parola hatalı, ya da hesap kilitli | `401` "Kullanıcı adı veya parola hatalı." | `invalid_credentials` |
+| Hesap pasif, süresi dolmuş, parola değişmeli | `403` "Hesabınızla şu anda giriş yapılamıyor." | `account_unavailable` |
 | Grup üyesi değil | `403` "Bu uygulamaya giriş yetkiniz yok." | `not_authorized` |
 | AD'ye ulaşılamıyor | `503` "Giriş şu anda yapılamıyor." | `directory_unavailable` |
+| AD kabul etti ama giriş kaydedilemedi (veritabanı) | `503` "Giriş şu anda yapılamıyor." | `sign_in_unavailable` |
 | Deneme limiti aşıldı | `429` ve `Retry-After` | — |
 
 Ret yanıtlarında çerez verilmez. Akışın ayrıntısı, AD hata kodları ve grup politikası:

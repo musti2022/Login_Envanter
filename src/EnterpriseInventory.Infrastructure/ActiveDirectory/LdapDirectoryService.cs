@@ -6,9 +6,10 @@ using Novell.Directory.Ldap;
 namespace EnterpriseInventory.Infrastructure.ActiveDirectory;
 
 /// <summary>
-/// Signs users in against Active Directory over LDAPS: a simple bind as <c>user@Domain</c> proves the password,
-/// then, still as that user, the account is read and its membership of the allowed group is checked by SID
-/// (<see cref="GroupMembership"/>). Every failure, unexpected answer or timeout is a refusal.
+/// Signs users in against Active Directory over LDAPS: a simple bind as <c>user@Domain</c> proves the password and
+/// "Who am I?" confirms which account it opened (<see cref="BoundIdentity"/>). Then, still as that user, the account
+/// is read and its membership of the allowed group is checked by SID (<see cref="GroupMembership"/>). Every failure,
+/// unexpected answer or timeout is a refusal, and the whole sign-in has one deadline.
 /// </summary>
 internal sealed partial class LdapDirectoryService(
     ILdapConnectionFactory connectionFactory,
@@ -35,23 +36,40 @@ internal sealed partial class LdapDirectoryService(
             return DirectorySignInResult.Failed(DirectorySignInStatus.InvalidCredentials);
         }
 
+        // One deadline for the whole sign-in, however many operations it takes.
+        var limit = TimeSpan.FromSeconds(settings.ConnectTimeoutSeconds + settings.OperationTimeoutSeconds);
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(limit);
         try
         {
-            using var connection = await connectionFactory.ConnectAsync(cancellationToken).ConfigureAwait(false);
+            using var connection = await connectionFactory.ConnectAsync(deadline.Token).ConfigureAwait(false);
             try
             {
-                await connection.BindAsync($"{samAccountName}@{settings.Domain}", password, cancellationToken).ConfigureAwait(false);
+                await connection.BindAsync($"{samAccountName}@{settings.Domain}", password, deadline.Token).ConfigureAwait(false);
             }
             catch (LdapException ex) when (ex.ResultCode == LdapException.InvalidCredentials)
             {
                 return DirectorySignInResult.Failed(BindFailures.FromDiagnosticMessage(ex.LdapErrorMessage));
             }
 
-            var user = await FindUserAsync(connection, settings, samAccountName, cancellationToken).ConfigureAwait(false);
+            var boundAs = BoundIdentity.Parse(await connection.WhoAmIAsync(deadline.Token).ConfigureAwait(false));
+            if (boundAs.IsOtherThan(samAccountName))
+            {
+                LogBoundToAnotherAccount(samAccountName, boundAs.ToString());
+                return DirectorySignInResult.Failed(DirectorySignInStatus.InvalidCredentials);
+            }
+
+            var (user, skippedReferrals) = await FindUserAsync(connection, settings, samAccountName, deadline.Token).ConfigureAwait(false);
             if (user is null)
             {
-                LogOutsideBaseDn(samAccountName, settings.BaseDn);
+                LogOutsideBaseDn(samAccountName, settings.BaseDn, skippedReferrals);
                 return DirectorySignInResult.Failed(DirectorySignInStatus.NotAuthorized);
+            }
+
+            if (boundAs.IsOtherThan(user))
+            {
+                LogBoundToAnotherAccount(samAccountName, boundAs.ToString());
+                return DirectorySignInResult.Failed(DirectorySignInStatus.InvalidCredentials);
             }
 
             if ((user.UserAccountControl & AccountDisabledFlag) != 0)
@@ -59,13 +77,18 @@ internal sealed partial class LdapDirectoryService(
                 return DirectorySignInResult.Failed(DirectorySignInStatus.AccountDisabled);
             }
 
-            if (!await IsAllowedAsync(connection, settings, user, cancellationToken).ConfigureAwait(false))
+            if (!await IsAllowedAsync(connection, settings, user, deadline.Token).ConfigureAwait(false))
             {
                 return DirectorySignInResult.Failed(DirectorySignInStatus.NotAuthorized);
             }
 
             return DirectorySignInResult.Succeeded(
                 new DirectoryAccount(user.ObjectGuid, user.SecurityIdentifier, user.SamAccountName, user.DisplayName));
+        }
+        catch (OperationCanceledException) when (deadline.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        {
+            LogDirectoryUnavailable(DirectoryFailure.Timeout, $"The sign-in did not finish within {limit.TotalSeconds:0} seconds.");
+            return DirectorySignInResult.Failed(DirectorySignInStatus.DirectoryUnavailable);
         }
         catch (DirectoryUnavailableException ex)
         {
@@ -85,7 +108,7 @@ internal sealed partial class LdapDirectoryService(
     }
 
     private async Task<bool> IsAllowedAsync(
-        ILdapConnection connection, ActiveDirectoryOptions settings, DirectoryUserEntry user, CancellationToken cancellationToken)
+        IDirectoryConnection connection, ActiveDirectoryOptions settings, DirectoryUserEntry user, CancellationToken cancellationToken)
     {
         switch (settings.NestedGroupPolicy)
         {
@@ -94,10 +117,10 @@ internal sealed partial class LdapDirectoryService(
                 return GroupMembership.IsNestedMember(tokenGroups, settings.AllowedGroupSid);
 
             case NestedGroupPolicy.DirectMembershipOnly:
-                var groupDn = await FindGroupDnAsync(connection, settings, cancellationToken).ConfigureAwait(false);
+                var (groupDn, skippedReferrals) = await FindGroupDnAsync(connection, settings, cancellationToken).ConfigureAwait(false);
                 if (groupDn is null)
                 {
-                    LogAllowedGroupNotFound(settings.AllowedGroupSid);
+                    LogAllowedGroupNotFound(settings.AllowedGroupSid, skippedReferrals);
                 }
 
                 return GroupMembership.IsDirectMember(user, settings.AllowedGroupSid, groupDn);
@@ -107,71 +130,40 @@ internal sealed partial class LdapDirectoryService(
         }
     }
 
-    private async Task<DirectoryUserEntry?> FindUserAsync(
-        ILdapConnection connection, ActiveDirectoryOptions settings, string samAccountName, CancellationToken cancellationToken)
+    private static async Task<(DirectoryUserEntry? User, int SkippedReferrals)> FindUserAsync(
+        IDirectoryConnection connection, ActiveDirectoryOptions settings, string samAccountName, CancellationToken cancellationToken)
     {
         var filter = $"(&(objectCategory=person)(objectClass=user)(sAMAccountName={DirectoryValues.EscapeFilterValue(samAccountName)}))";
-        var entries = await SearchAsync(connection, settings.BaseDn, filter, UserAttributes, cancellationToken).ConfigureAwait(false);
-        return entries.Count switch
+        var result = await connection.SearchAsync(settings.BaseDn, LdapConnection.ScopeSub, filter, UserAttributes, cancellationToken)
+            .ConfigureAwait(false);
+        return result.Entries.Count switch
         {
-            0 => null,
-            1 => ReadUser(entries[0]),
-            _ => throw new InvalidDataException($"{entries.Count} accounts have the logon name {samAccountName}."),
+            0 => (null, result.SkippedReferrals),
+            1 => (ReadUser(result.Entries[0]), result.SkippedReferrals),
+            _ => throw new InvalidDataException($"{result.Entries.Count} accounts have the logon name {samAccountName}."),
         };
     }
 
-    private async Task<string?> FindGroupDnAsync(ILdapConnection connection, ActiveDirectoryOptions settings, CancellationToken cancellationToken)
+    private static async Task<(string? Dn, int SkippedReferrals)> FindGroupDnAsync(
+        IDirectoryConnection connection, ActiveDirectoryOptions settings, CancellationToken cancellationToken)
     {
         // The group may live anywhere in the domain, not only under BaseDn.
         var filter = $"(objectSid={DirectoryValues.EscapeFilterBytes(DirectoryValues.SidToBytes(settings.AllowedGroupSid))})";
         var domainDn = DistinguishedNames.FromDnsDomain(settings.Domain);
-        var entries = await SearchAsync(connection, domainDn, filter, NoAttributes, cancellationToken).ConfigureAwait(false);
-        return entries.Count == 1 ? entries[0].Dn : null;
+        var result = await connection.SearchAsync(domainDn, LdapConnection.ScopeSub, filter, NoAttributes, cancellationToken)
+            .ConfigureAwait(false);
+        return (result.Entries.Count == 1 ? result.Entries[0].Dn : null, result.SkippedReferrals);
     }
 
-    private async Task<IReadOnlyList<string>> ReadTokenGroupsAsync(ILdapConnection connection, string userDn, CancellationToken cancellationToken)
+    private static async Task<IReadOnlyList<string>> ReadTokenGroupsAsync(
+        IDirectoryConnection connection, string userDn, CancellationToken cancellationToken)
     {
         // tokenGroups is computed by the domain controller and can only be read with a base-scope search.
-        var entries = await SearchAsync(connection, userDn, "(objectClass=*)", TokenGroupsAttribute, cancellationToken, LdapConnection.ScopeBase)
+        var result = await connection.SearchAsync(userDn, LdapConnection.ScopeBase, "(objectClass=*)", TokenGroupsAttribute, cancellationToken)
             .ConfigureAwait(false);
-        var values = entries.Count == 1 ? entries[0].GetAttributeSet().Find("tokenGroups")?.ByteValueArray : null;
+        var values = result.Entries.Count == 1 ? result.Entries[0].GetAttributeSet().Find("tokenGroups")?.ByteValueArray : null;
         return values?.Select(sid => DirectoryValues.SidToString(sid)).ToList()
             ?? throw new InvalidDataException("The directory did not return the user's tokenGroups.");
-    }
-
-    private async Task<List<LdapEntry>> SearchAsync(
-        ILdapConnection connection,
-        string searchBase,
-        string filter,
-        string[] attributes,
-        CancellationToken cancellationToken,
-        int scope = LdapConnection.ScopeSub)
-    {
-        var timeout = options.Value.OperationTimeoutSeconds;
-        var constraints = new LdapSearchConstraints
-        {
-            MaxResults = 2,
-            ServerTimeLimit = timeout,
-            TimeLimit = (int)TimeSpan.FromSeconds(timeout).TotalMilliseconds,
-            ReferralFollowing = false,
-        };
-
-        var results = await connection.SearchAsync(searchBase, scope, filter, attributes, false, constraints, cancellationToken)
-            .ConfigureAwait(false);
-        var entries = new List<LdapEntry>();
-        while (await results.HasMoreAsync(cancellationToken).ConfigureAwait(false))
-        {
-            try
-            {
-                entries.Add(await results.NextAsync(cancellationToken).ConfigureAwait(false));
-            }
-            catch (LdapReferralException)
-            {
-                // AD refers subtree searches at the domain root to its DNS partitions; they hold no users or groups.
-            }
-        }
-
-        return entries;
     }
 
     private static DirectoryUserEntry ReadUser(LdapEntry entry)
@@ -192,7 +184,9 @@ internal sealed partial class LdapDirectoryService(
             DirectoryValues.SidToString(sid),
             sam,
             string.IsNullOrWhiteSpace(displayName) ? sam : displayName.Trim(),
-            ReadInt(attributes, "userAccountControl") ?? 0,
+            // Without it the account's state is unknown; reading it as "enabled" would fail open.
+            ReadInt(attributes, "userAccountControl")
+                ?? throw new InvalidDataException($"The account {entry.Dn} has no readable userAccountControl."),
             attributes.Find("memberOf")?.StringValueArray ?? [],
             ReadInt(attributes, "primaryGroupID"));
     }
@@ -201,11 +195,14 @@ internal sealed partial class LdapDirectoryService(
         int.TryParse(attributes.Find(name)?.StringValue, System.Globalization.NumberStyles.Integer,
             System.Globalization.CultureInfo.InvariantCulture, out var value) ? value : null;
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "{UserName} proved their password but is not under BaseDn {BaseDn}; access refused")]
-    private partial void LogOutsideBaseDn(string userName, string baseDn);
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{UserName} proved their password but is not under BaseDn {BaseDn} ({SkippedReferrals} referrals not followed); access refused")]
+    private partial void LogOutsideBaseDn(string userName, string baseDn, int skippedReferrals);
 
-    [LoggerMessage(Level = LogLevel.Error, Message = "No group with the configured AllowedGroupSid {GroupSid} was found; direct membership cannot be confirmed")]
-    private partial void LogAllowedGroupNotFound(string groupSid);
+    [LoggerMessage(Level = LogLevel.Error, Message = "No group with the configured AllowedGroupSid {GroupSid} was found ({SkippedReferrals} referrals not followed); direct membership cannot be confirmed")]
+    private partial void LogAllowedGroupNotFound(string groupSid, int skippedReferrals);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "The password typed for {UserName} opened the account {BoundAs} instead; refused. Another account's userPrincipalName probably claims this logon name")]
+    private partial void LogBoundToAnotherAccount(string userName, string boundAs);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Active Directory is unavailable ({Failure}): {Reason}")]
     private partial void LogDirectoryUnavailable(DirectoryFailure failure, string reason);

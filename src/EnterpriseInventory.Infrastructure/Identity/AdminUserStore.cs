@@ -20,6 +20,21 @@ internal sealed class AdminUserStore(
         ArgumentNullException.ThrowIfNull(account);
 
         using var actingUser = signInIdentity.ActAs(account.SamAccountName);
+        try
+        {
+            await RecordAsync(account, cancellationToken).ConfigureAwait(false);
+        }
+        catch (DbUpdateException ex) when (ex.IsUniqueKeyViolation())
+        {
+            // The first two sign-ins of a new administrator can race to create the record; the loser finds the
+            // winner's record on a second attempt.
+            db.ChangeTracker.Clear();
+            await RecordAsync(account, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private async Task RecordAsync(DirectoryAccount account, CancellationToken cancellationToken)
+    {
         var now = timeProvider.GetUtcNow();
 
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);

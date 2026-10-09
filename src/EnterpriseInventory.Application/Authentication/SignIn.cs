@@ -37,7 +37,11 @@ public enum SignInOutcome
     ValidationFailed = 1,
     InvalidCredentials = 2,
 
-    /// <summary>The account is disabled, locked or expired, or its password must be changed.</summary>
+    /// <summary>
+    /// The account is disabled or expired, its password must be changed, or logon restrictions apply. The
+    /// directory only says so once the password was right. A locked account is reported as
+    /// <see cref="InvalidCredentials"/> instead, because AD reports lockout whatever password was typed.
+    /// </summary>
     AccountUnavailable = 3,
 
     /// <summary>The user is not a member of the allowed group.</summary>
@@ -45,6 +49,9 @@ public enum SignInOutcome
 
     /// <summary>The directory could not be used, so the sign-in failed closed.</summary>
     DirectoryUnavailable = 5,
+
+    /// <summary>The directory accepted the user but the sign-in could not be recorded, so no session was started.</summary>
+    SignInUnavailable = 6,
 }
 
 public sealed record SignInResult(
@@ -54,7 +61,9 @@ public sealed record SignInResult(
 
 /// <summary>
 /// Signs a user in against the directory and records the administrator's sign-in. Logs say who tried and why it
-/// failed; the password never appears in a log, an exception or the database.
+/// failed; the password never appears in a log, an exception or the database. The typed user name is logged in
+/// full only once the directory has accepted the password: before that it may be a mistyped password, so only its
+/// first characters and length are kept.
 /// </summary>
 public sealed partial class SignInHandler(
     IValidator<SignInRequest> validator,
@@ -78,34 +87,51 @@ public sealed partial class SignInHandler(
 
         if (result is { Status: DirectorySignInStatus.Succeeded, Account: { } account })
         {
-            await adminUsers.RecordSignInAsync(account, cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await adminUsers.RecordSignInAsync(account, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // A sign-in that cannot be recorded (and audited) does not start a session.
+                LogRecordingFailed(ex, account.SamAccountName, requestContext.ClientAddress);
+                return new SignInResult(SignInOutcome.SignInUnavailable);
+            }
+
             LogSignedIn(account.SamAccountName, requestContext.ClientAddress);
             return new SignInResult(SignInOutcome.Succeeded, account);
         }
 
         var outcome = result.Status switch
         {
-            DirectorySignInStatus.AccountDisabled or DirectorySignInStatus.AccountLocked or DirectorySignInStatus.AccountExpired
+            DirectorySignInStatus.AccountDisabled or DirectorySignInStatus.AccountExpired
                 or DirectorySignInStatus.PasswordExpired or DirectorySignInStatus.PasswordMustChange
                 or DirectorySignInStatus.LogonNotPermitted => SignInOutcome.AccountUnavailable,
             DirectorySignInStatus.NotAuthorized => SignInOutcome.NotAuthorized,
             DirectorySignInStatus.DirectoryUnavailable => SignInOutcome.DirectoryUnavailable,
 
-            // Anything else, including a "success" without an account, is a refusal.
+            // Anything else, including a lockout and a "success" without an account, is a refusal.
             _ => SignInOutcome.InvalidCredentials,
         };
 
+        // Only these outcomes mean the directory accepted the password.
+        var passwordProven = outcome is SignInOutcome.AccountUnavailable or SignInOutcome.NotAuthorized;
+        var loggedName = passwordProven ? userName : MaskUserName(userName);
         if (outcome == SignInOutcome.DirectoryUnavailable)
         {
-            LogDirectoryUnavailable(userName, requestContext.ClientAddress);
+            LogDirectoryUnavailable(loggedName, requestContext.ClientAddress);
         }
         else
         {
-            LogSignInRefused(userName, result.Status, requestContext.ClientAddress);
+            LogSignInRefused(loggedName, result.Status, requestContext.ClientAddress);
         }
 
         return new SignInResult(outcome);
     }
+
+    /// <summary>E.g. <c>ay… (10 characters)</c>: enough to match a complaint to a log entry, too little to be a password.</summary>
+    private static string MaskUserName(string userName) =>
+        $"{userName[..Math.Min(2, userName.Length)]}… ({userName.Length} characters)";
 
     [LoggerMessage(Level = LogLevel.Information, Message = "{UserName} signed in from {ClientAddress}")]
     private partial void LogSignedIn(string userName, string? clientAddress);
@@ -115,4 +141,7 @@ public sealed partial class SignInHandler(
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Sign-in for {UserName} from {ClientAddress} failed closed: the directory is unavailable")]
     private partial void LogDirectoryUnavailable(string userName, string? clientAddress);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "{UserName} was accepted by the directory but the sign-in from {ClientAddress} could not be recorded; no session was started")]
+    private partial void LogRecordingFailed(Exception exception, string userName, string? clientAddress);
 }

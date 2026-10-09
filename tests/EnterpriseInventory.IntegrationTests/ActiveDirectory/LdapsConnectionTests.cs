@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography.X509Certificates;
+using EnterpriseInventory.Application.Authentication;
 using EnterpriseInventory.Infrastructure.ActiveDirectory;
 using Microsoft.Extensions.Logging;
 
@@ -31,7 +32,7 @@ public sealed class LdapsConnectionTests : IDisposable
 
         using var connection = await Factory(server.Port).ConnectAsync(CancellationToken.None);
 
-        Assert.True(connection.Connected);
+        Assert.NotNull(connection);
         await server.FirstHandshake.WaitAsync(TimeSpan.FromSeconds(5));
     }
 
@@ -143,9 +144,46 @@ public sealed class LdapsConnectionTests : IDisposable
             () => Factory(server.Port).ConnectAsync(cancellation.Token));
     }
 
-    // A generous timeout everywhere except in the timeout test, so a slow machine cannot turn a refusal into a timeout.
-    private LdapConnectionFactory Factory(int port, bool pinCa = true, bool checkRevocation = false, int connectTimeoutSeconds = 10) => new(
-        Microsoft.Extensions.Options.Options.Create(new ActiveDirectoryOptions
+    [Fact]
+    public async Task A_bind_the_server_never_answers_stops_when_the_caller_cancels()
+    {
+        using var certificate = TestPki.CreateServerCertificate(_ca, TlsTestServer.HostName);
+        await using var server = new TlsTestServer(certificate);
+        using var connection = await Factory(server.Port, operationTimeoutSeconds: 120).ConnectAsync(CancellationToken.None);
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(300));
+        var stopwatch = Stopwatch.StartNew();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => connection.BindAsync("ayse.admin@envanter.test", "Any-Password-1", cancellation.Token));
+
+        Assert.InRange(stopwatch.Elapsed, TimeSpan.Zero, TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public async Task A_sign_in_the_server_never_answers_fails_closed_within_the_sign_in_deadline()
+    {
+        using var certificate = TestPki.CreateServerCertificate(_ca, TlsTestServer.HostName);
+        await using var server = new TlsTestServer(certificate);
+        var options = Options(server.Port, connectTimeoutSeconds: 1, operationTimeoutSeconds: 2);
+        options.AllowedGroupSid = "S-1-5-21-1-2-3-1105";
+        options.NestedGroupPolicy = NestedGroupPolicy.DirectMembershipOnly;
+        using var factory = new LdapConnectionFactory(Microsoft.Extensions.Options.Options.Create(options), _logger);
+        var service = new LdapDirectoryService(factory, Microsoft.Extensions.Options.Options.Create(options), new CapturingLogger<LdapDirectoryService>());
+        var stopwatch = Stopwatch.StartNew();
+
+        var result = await service.SignInAsync("ayse.admin", "Any-Password-1", CancellationToken.None);
+
+        Assert.Equal(DirectorySignInStatus.DirectoryUnavailable, result.Status);
+        Assert.InRange(stopwatch.Elapsed, TimeSpan.FromSeconds(1.5), TimeSpan.FromSeconds(6));
+    }
+
+    // A generous timeout everywhere except in the timeout tests, so a slow machine cannot turn a refusal into a timeout.
+    private LdapConnectionFactory Factory(
+        int port, bool pinCa = true, bool checkRevocation = false, int connectTimeoutSeconds = 10, int operationTimeoutSeconds = 15) =>
+        new(Microsoft.Extensions.Options.Options.Create(Options(port, pinCa, checkRevocation, connectTimeoutSeconds, operationTimeoutSeconds)), _logger);
+
+    private ActiveDirectoryOptions Options(
+        int port, bool pinCa = true, bool checkRevocation = false, int connectTimeoutSeconds = 10, int operationTimeoutSeconds = 15) => new()
         {
             Domain = "envanter.test",
             ServerFqdn = TlsTestServer.HostName,
@@ -154,8 +192,8 @@ public sealed class LdapsConnectionTests : IDisposable
             TrustedCaCertificatePath = pinCa ? TestPki.WritePem(_ca, _tempDirectory) : null,
             CheckCertificateRevocation = checkRevocation,
             ConnectTimeoutSeconds = connectTimeoutSeconds,
-        }),
-        _logger);
+            OperationTimeoutSeconds = operationTimeoutSeconds,
+        };
 
     private static async Task<DirectoryUnavailableException> ConnectFails(LdapConnectionFactory factory, params DirectoryFailure[] expected)
     {

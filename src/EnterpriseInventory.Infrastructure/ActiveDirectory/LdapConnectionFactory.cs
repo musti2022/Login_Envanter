@@ -14,7 +14,7 @@ internal interface ILdapConnectionFactory
     /// <see cref="LdapsCertificateValidator"/>. Nothing is sent before the TLS handshake succeeds.
     /// </summary>
     /// <exception cref="DirectoryUnavailableException">The server is unreachable, too slow or not trusted.</exception>
-    Task<ILdapConnection> ConnectAsync(CancellationToken cancellationToken);
+    Task<IDirectoryConnection> ConnectAsync(CancellationToken cancellationToken);
 }
 
 internal sealed partial class LdapConnectionFactory : ILdapConnectionFactory, IDisposable
@@ -35,7 +35,7 @@ internal sealed partial class LdapConnectionFactory : ILdapConnectionFactory, ID
             : X509CertificateLoader.LoadCertificateFromFile(_options.TrustedCaCertificatePath);
     }
 
-    public async Task<ILdapConnection> ConnectAsync(CancellationToken cancellationToken)
+    public async Task<IDirectoryConnection> ConnectAsync(CancellationToken cancellationToken)
     {
         if (!_options.UseLdaps)
         {
@@ -82,30 +82,21 @@ internal sealed partial class LdapConnectionFactory : ILdapConnectionFactory, ID
         try
         {
             await connection.ConnectAsync(_options.ServerFqdn, _options.Port, timeout.Token).ConfigureAwait(false);
-            return connection;
+            return new LdapDirectoryConnection(connection, tlsStream, _options.OperationTimeoutSeconds);
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
-            Close(connection, tlsStream);
+            LdapDirectoryConnection.Close(connection, tlsStream);
             throw Classify(ex, server, certificateResult);
         }
         catch
         {
-            Close(connection, tlsStream);
+            LdapDirectoryConnection.Close(connection, tlsStream);
             throw;
         }
     }
 
     public void Dispose() => _trustedRoot?.Dispose();
-
-    // LdapConnection.Dispose only closes connections that completed the handshake. The TLS stream owns the socket, so
-    // disposing it closes connections refused during the handshake (an untrusted certificate, for example). A socket
-    // that failed before the handshake started is dropped by the library and closed by its finalizer.
-    private static void Close(LdapConnection connection, IDisposable? tlsStream)
-    {
-        tlsStream?.Dispose();
-        connection.Dispose();
-    }
 
     private static DirectoryUnavailableException Classify(Exception ex, string server, CertificateValidationResult? certificateResult)
     {

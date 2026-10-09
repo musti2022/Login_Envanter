@@ -40,8 +40,9 @@ public sealed class ActiveDirectoryOptions
     public string ServiceAccountPassword { get; set; } = string.Empty;
 
     /// <summary>
-    /// Optional PEM or DER file of the CA that issued the domain controller's certificate. When set, the
-    /// certificate must chain to this CA only; when empty, it must chain to a CA the server's trust store trusts.
+    /// Optional PEM or DER file of the self-signed root CA the domain controller's certificate chains to. When set,
+    /// the certificate must chain to this root only; when empty, it must chain to a root the server's trust store
+    /// trusts.
     /// </summary>
     public string? TrustedCaCertificatePath { get; set; }
 
@@ -51,7 +52,10 @@ public sealed class ActiveDirectoryOptions
     /// <summary>Limit for the TCP connection and the TLS handshake.</summary>
     public int ConnectTimeoutSeconds { get; set; } = 10;
 
-    /// <summary>Limit for each bind or search.</summary>
+    /// <summary>
+    /// Limit for each bind or search. A whole sign-in, from connecting to the last search, is also limited to
+    /// <see cref="ConnectTimeoutSeconds"/> plus this.
+    /// </summary>
     public int OperationTimeoutSeconds { get; set; } = 15;
 
     /// <summary>

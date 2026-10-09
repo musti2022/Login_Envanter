@@ -33,6 +33,8 @@ Kurulanlar:
 | `disabled.user` | Üye, hesap pasif |
 | `expired.user` | Üye, hesap süresi dolmuş |
 | `mustchange.user` | Üye, parolasını değiştirmesi gerekiyor |
+| `clash.member` | Üye; açık `userPrincipalName` değeri yok |
+| `clash.other` | Üye değil; `userPrincipalName` değeri `clash.member@envanter.test` (başka hesabın oturum adını sahiplenen UPN) |
 | `svc.envanter` | Servis hesabı |
 
 Test kullanıcılarının ortak parolası, servis hesabı parolası ve grup SID'leri rastgele üretilir ve yalnızca

@@ -197,11 +197,13 @@ add_user expired.user "Süresi" "Dolmuş"      # direct member, account expired
 add_user mustchange.user "Parola" "Değişecek" # direct member, must change password
 add_user primary.user "Birincil" "Grup"      # Bim_Envanter is the primary group
 add_user decoy.user "Sahte" "Grup"           # member of the decoy group only
+add_user clash.member "Çakışan" "Üye"        # direct member whose logon name another account's UPN claims
+add_user clash.other "Çakışan" "Diğer"       # not a member; its userPrincipalName is clash.member@<domain>
 samba_tool user create svc.envanter "$SERVICE_PASSWORD" -H "$SAM" --use-username-as-cn \
   --description="EnterpriseInventory directory reader" >/dev/null
 
 samba_tool group addmembers Bim_Envanter \
-  ayse.admin,disabled.user,expired.user,mustchange.user,primary.user -H "$SAM" >/dev/null
+  ayse.admin,disabled.user,expired.user,mustchange.user,primary.user,clash.member -H "$SAM" >/dev/null
 samba_tool group addmembers Envanter_Ekibi nested.user -H "$SAM" >/dev/null
 ldbmodify -H "$SAM" >/dev/null <<LDIF
 dn: CN=Bim_Envanter,OU=Sahte,${BASE_DN}
@@ -223,6 +225,21 @@ dn: CN=mustchange.user,${USERS_DN}
 changetype: modify
 replace: pwdLastSet
 pwdLastSet: 0
+LDIF
+
+# A bind as clash.member@<domain> must not open clash.other: AD resolves an explicit userPrincipalName before the
+# implicit sAMAccountName@domain. Samba refuses to create such a clash through its own checks, so the UPN is written
+# straight into the domain partition while the server is stopped.
+ldbmodify -H "$SAM" >/dev/null <<LDIF
+dn: CN=clash.member,${USERS_DN}
+changetype: modify
+delete: userPrincipalName
+LDIF
+ldbmodify -H "tdb://${TARGET_DIR}/private/sam.ldb.d/${BASE_DN^^}.ldb" >/dev/null <<LDIF
+dn: CN=clash.other,${USERS_DN}
+changetype: modify
+replace: userPrincipalName
+userPrincipalName: clash.member@${DNS_DOMAIN}
 LDIF
 
 group_sid() {

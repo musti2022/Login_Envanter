@@ -43,7 +43,7 @@ internal static class AuthEndpoints
             SignInOutcome.AccountUnavailable => Problem(
                 StatusCodes.Status403Forbidden,
                 "Hesabınızla şu anda giriş yapılamıyor.",
-                "Hesabınız pasif, kilitli veya süresi dolmuş olabilir ya da parolanızı değiştirmeniz gerekiyor. BT ekibiyle görüşün.",
+                "Hesabınız pasif veya süresi dolmuş olabilir ya da parolanızı değiştirmeniz gerekiyor. BT ekibiyle görüşün.",
                 "account_unavailable"),
             SignInOutcome.NotAuthorized => Problem(
                 StatusCodes.Status403Forbidden,
@@ -55,10 +55,18 @@ internal static class AuthEndpoints
                 "Giriş şu anda yapılamıyor.",
                 "Kimlik doğrulama sunucusuna ulaşılamıyor. Lütfen biraz sonra tekrar deneyin.",
                 "directory_unavailable"),
+            SignInOutcome.SignInUnavailable => Problem(
+                StatusCodes.Status503ServiceUnavailable,
+                "Giriş şu anda yapılamıyor.",
+                "Giriş kaydedilemedi. Lütfen biraz sonra tekrar deneyin.",
+                "sign_in_unavailable"),
+
+            // A locked account gets the same answer: AD reports lockout whatever password was typed, so saying so
+            // would confirm that the account exists.
             _ => Problem(
                 StatusCodes.Status401Unauthorized,
                 "Kullanıcı adı veya parola hatalı.",
-                null,
+                "Birden fazla hatalı denemeden sonra hesabınız geçici olarak kilitlenebilir; sorun sürerse BT ekibiyle görüşün.",
                 "invalid_credentials"),
         };
     }

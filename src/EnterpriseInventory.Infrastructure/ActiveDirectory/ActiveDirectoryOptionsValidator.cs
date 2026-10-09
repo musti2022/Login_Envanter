@@ -161,6 +161,11 @@ internal sealed partial class ActiveDirectoryOptionsValidator(IHostEnvironment e
             {
                 errors.Add($"ActiveDirectory:TrustedCaCertificatePath '{path}' is not a CA certificate.");
             }
+            else if (!certificate.SubjectName.RawData.AsSpan().SequenceEqual(certificate.IssuerName.RawData))
+            {
+                // The chain is built up to a trust anchor; an issuing (intermediate) CA is not one.
+                errors.Add($"ActiveDirectory:TrustedCaCertificatePath '{path}' is an issuing CA; pin the self-signed root CA it chains to.");
+            }
         }
         catch (CryptographicException)
         {

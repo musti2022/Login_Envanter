@@ -7,7 +7,7 @@ namespace EnterpriseInventory.Infrastructure.ActiveDirectory;
 /// <summary>
 /// Decides whether the domain controller's LDAPS certificate is trusted. It must be issued for the configured
 /// server name, be inside its validity period, allow server authentication and chain to a trusted root: the
-/// configured CA when one is pinned, otherwise a CA in the server's trust store. There is deliberately no
+/// configured root CA when one is pinned, otherwise a root in the server's trust store. There is deliberately no
 /// setting that relaxes any of this.
 /// </summary>
 internal sealed class LdapsCertificateValidator(X509Certificate2? trustedRoot, bool checkRevocation)

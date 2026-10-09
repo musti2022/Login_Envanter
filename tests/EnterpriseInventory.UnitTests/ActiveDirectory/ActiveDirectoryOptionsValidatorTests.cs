@@ -192,6 +192,26 @@ public sealed class ActiveDirectoryOptionsValidatorTests : IDisposable
     }
 
     [Fact]
+    public void Pinned_ca_must_be_the_root_not_an_issuing_ca()
+    {
+        using var rootKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var rootRequest = new CertificateRequest("CN=Test Root CA", rootKey, HashAlgorithmName.SHA256);
+        rootRequest.CertificateExtensions.Add(new X509BasicConstraintsExtension(true, false, 0, true));
+        using var root = rootRequest.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(30));
+
+        using var issuingKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var issuingRequest = new CertificateRequest("CN=Test Issuing CA", issuingKey, HashAlgorithmName.SHA256);
+        issuingRequest.CertificateExtensions.Add(new X509BasicConstraintsExtension(true, false, 0, true));
+        using var issuing = issuingRequest.Create(root, DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(20), [1, 2, 3, 4]);
+
+        var options = ValidOptions();
+        options.TrustedCaCertificatePath = Path.Combine(_tempDirectory, "issuing.crt");
+        File.WriteAllText(options.TrustedCaCertificatePath, issuing.ExportCertificatePem());
+
+        AssertFails(options, "is an issuing CA; pin the self-signed root CA");
+    }
+
+    [Fact]
     public void Pinned_ca_certificate_is_accepted()
     {
         var options = ValidOptions();

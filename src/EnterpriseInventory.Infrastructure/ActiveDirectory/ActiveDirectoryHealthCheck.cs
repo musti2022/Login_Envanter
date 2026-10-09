@@ -28,8 +28,9 @@ internal sealed class ActiveDirectoryHealthCheck(ILdapConnectionFactory connecti
         try
         {
             using var connection = await connectionFactory.ConnectAsync(cancellationToken).ConfigureAwait(false);
-            var rootDse = await connection.ReadAsync(string.Empty, RootDseAttributes, cancellationToken).ConfigureAwait(false);
-            var namingContext = rootDse.GetAttributeSet().Find("defaultNamingContext")?.StringValue;
+            var rootDse = await connection.SearchAsync(string.Empty, LdapConnection.ScopeBase, "(objectClass=*)", RootDseAttributes, cancellationToken)
+                .ConfigureAwait(false);
+            var namingContext = rootDse.Entries.Count == 1 ? rootDse.Entries[0].GetAttributeSet().Find("defaultNamingContext")?.StringValue : null;
 
             if (string.IsNullOrEmpty(namingContext) || !DistinguishedNames.IsSameOrInside(settings.BaseDn, namingContext))
             {

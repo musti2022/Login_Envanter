@@ -25,7 +25,7 @@ Hiçbiri ayarla kapatılamaz; doğrulamayı atlatan bir kod yolu yoktur.
 | Kural | Sonuç |
 | --- | --- |
 | Sertifika `ActiveDirectory:ServerFqdn` adına verilmiş olmalı (SAN) | Ad uyuşmazsa bağlantı reddedilir. IP adresiyle bağlanılamaz; ayar DNS adı ister. |
-| Zincir güvenilir bir köke ulaşmalı | `TrustedCaCertificatePath` boşsa sunucunun (Windows) güven deposu kullanılır. Doluysa zincir **yalnızca** o CA'ya ulaşmalı; sunucunun gönderdiği ara sertifikalar zincir kurmak için kullanılır ama güven vermez. |
+| Zincir güvenilir bir köke ulaşmalı | `TrustedCaCertificatePath` boşsa sunucunun (Windows) güven deposu kullanılır. Doluysa zincir **yalnızca** o kök CA'ya ulaşmalı; dosya kendinden imzalı **kök** CA olmalıdır (sertifikayı veren ara CA verilirse uygulama başlamaz). Sunucunun gönderdiği ara sertifikalar zincir kurmak için kullanılır ama güven vermez. |
 | Geçerlilik tarihleri | Süresi dolmuş veya henüz geçerli olmayan sertifika reddedilir. |
 | Kullanım amacı | Sertifika "Server Authentication" (1.3.6.1.5.5.7.3.1) kullanımına izin vermeli. |
 | İptal (revocation) | `CheckCertificateRevocation=true` (varsayılan) ise CRL/OCSP kontrol edilir; iptal durumu öğrenilemezse bağlantı **reddedilir** (fail-closed). |
@@ -46,28 +46,42 @@ konuşmuyor), erişilemiyor ve zaman aşımı. Hepsinde yeni giriş **reddedilir
    bind AD'de anonim bind sayılır.
 3. LDAPS bağlantısı açılır (yukarıdaki sertifika kuralları), `kullanici@Domain` ile **simple bind** yapılır.
    Parolayı AD doğrular; uygulama parolayı hiçbir yerde saklamaz, karşılaştırmaz, loglamaz.
-4. Aynı bağlantıda, kullanıcının kendi kimliğiyle, hesap `BaseDn` altında `sAMAccountName` ile aranır. Arama
-   değeri LDAP filtresine kaçışlanarak (RFC 4515) konur. Hesap `BaseDn` dışındaysa giriş reddedilir.
-5. Hesap pasifse reddedilir; ardından grup üyeliği kontrol edilir (8. gün).
+4. Bind'in hangi hesabı açtığı "Who am I?" (RFC 4532) ile sorulur. AD `kullanici@Domain` adını önce açıkça
+   yazılmış `userPrincipalName` değerlerinde arar; başka bir hesabın UPN'i bu adı sahipleniyorsa parola o hesabınkidir.
+   Açılan hesap girilen kullanıcı değilse giriş `401` ile reddedilir ve sunucu loguna uyarı yazılır; yanıt
+   anlaşılamazsa `503` (fail-closed).
+5. Aynı bağlantıda, kullanıcının kendi kimliğiyle, hesap `BaseDn` altında `sAMAccountName` ile aranır. Arama
+   değeri LDAP filtresine kaçışlanarak (RFC 4515) konur. Hesap `BaseDn` dışındaysa giriş reddedilir; izlenmeyen
+   LDAP yönlendirmelerinin (referral) sayısı loga yazılır.
+6. Hesap pasifse (veya `userAccountControl` okunamıyorsa) reddedilir; ardından grup üyeliği kontrol edilir (8. gün).
 
-AD bind hatasındaki alt kod (`data 52e` gibi) şöyle yorumlanır. AD bu alt kodları yalnızca parola doğruysa
-gösterir; yanlış parolada her hesap için aynı yanıt döner, böylece hesabın durumu parolayı bilmeyen birine
-açık edilmez.
+Bir girişin tamamı (bağlantı, bind ve tüm aramalar) `ConnectTimeoutSeconds + OperationTimeoutSeconds` içinde
+biter; süre dolarsa bağlantı kapatılır ve giriş `503` ile reddedilir. İstemci isteği iptal ederse bağlantı hemen
+kapatılır.
+
+AD bind hatasındaki alt kod (`data 52e` gibi) şöyle yorumlanır. AD bu alt kodları kilitlenme dışında yalnızca
+parola doğruysa gösterir; yanlış parolada her hesap için aynı yanıt döner, böylece hesabın durumu parolayı
+bilmeyen birine açık edilmez. Kilitlenmeyi (`775`) AD parola ne olursa olsun bildirdiği için kullanıcıya yanlış
+parola ile aynı yanıt verilir; aksi hâlde hesabın var olduğu doğrulanmış olurdu.
 
 | AD alt kodu | Anlamı | Yanıt |
 | --- | --- | --- |
-| `525`, `52e` (ve tanınmayan her kod) | Kullanıcı yok / parola yanlış | `401` "Kullanıcı adı veya parola hatalı." |
+| `525`, `52e` (ve tanınmayan her kod) | Kullanıcı yok / parola yanlış | `401` "Kullanıcı adı veya parola hatalı." (açıklama: art arda hatalı denemelerden sonra hesabın geçici olarak kilitlenebileceği) |
+| `775` | Hesap kilitli | `401` (yanlış parola ile aynı yanıt; neden yalnızca logda) |
 | `533` (veya `userAccountControl` pasif bayrağı) | Hesap pasif | `403` "Hesabınızla şu anda giriş yapılamıyor." |
-| `775` | Hesap kilitli | `403` (aynı mesaj) |
 | `701` | Hesabın süresi dolmuş | `403` (aynı mesaj) |
 | `532`, `773` | Parolanın süresi dolmuş / değiştirilmesi gerekiyor | `403` (aynı mesaj) |
 | `530`, `531` | Bu saatte veya bu bilgisayardan girişe izin yok | `403` (aynı mesaj) |
 | — | `Bim_Envanter` üyesi değil | `403` "Bu uygulamaya giriş yetkiniz yok." |
-| — | AD'ye ulaşılamıyor, zaman aşımı, sertifika reddi, beklenmeyen yanıt | `503` "Giriş şu anda yapılamıyor." |
+| — | AD'ye ulaşılamıyor, zaman aşımı, sertifika reddi, beklenmeyen yanıt | `503` "Giriş şu anda yapılamıyor." (`directory_unavailable`) |
+| — | AD kabul etti ama giriş veritabanına kaydedilemedi | `503` "Giriş şu anda yapılamıyor." (`sign_in_unavailable`), oturum açılmaz |
 
 Yanıtlar ProblemDetails'tir ve istemcinin ayırt edebilmesi için `code` alanı taşır: `invalid_credentials`,
-`account_unavailable`, `not_authorized`, `directory_unavailable`. Ret nedeni (ör. "hesap kilitli") yalnızca
-sunucu loguna, kullanıcı adı ve istemci adresiyle birlikte yazılır.
+`account_unavailable`, `not_authorized`, `directory_unavailable`, `sign_in_unavailable`. Ret nedeni (ör. "hesap
+kilitli") yalnızca sunucu loguna, istemci adresiyle birlikte yazılır. Kullanıcı adı loga ancak AD parolayı kabul
+ettiyse tam yazılır; parola doğrulanmadan reddedilen girişlerde (yanlış parola, kilitli hesap, AD'ye ulaşılamıyor)
+yalnızca ilk iki karakteri ve uzunluğu yazılır (`ay… (10 characters)`), çünkü kullanıcı adı alanına yanlışlıkla
+parola yazılmış olabilir.
 
 Başka korumalar:
 
@@ -82,7 +96,8 @@ Başarılı girişte:
 
 - `AdminUsers` tablosunda kullanıcı AD `objectGUID`'i ile bulunur veya oluşturulur; ilk/son giriş zamanı, oturum
   adı ve görünen adı güncellenir. Giriş yapan yöneticiler (`AdminUsers`) zimmetlenen çalışanlardan (`Employees`)
-  ayrı tutulur.
+  ayrı tutulur. Aynı kullanıcının eşzamanlı ilk girişleri tek kayıt oluşturur (benzersiz indeks çakışmasında
+  kayıt bir kez daha okunur).
 - Aynı transaction içinde `AuditLogs`'a `SignedIn` kaydı yazılır (kullanıcı, istemci adresi, correlation ID).
 - Tarayıcıya `__Host-EnterpriseInventory` oturum çerezi verilir: HttpOnly, Secure, SameSite=Strict, `Path=/`,
   tarayıcı kapanınca silinir, 20 dakika işlem yapılmazsa geçersizleşir. Çerez kullanıcıya `Administrator`
@@ -123,9 +138,9 @@ neden hatalı olduğunu yazarak durur.
 | `AllowedGroupSid` | `Bim_Envanter` grubunun SID'i, `S-1-5-21-…-RID` biçiminde. Grup adı yetki için kullanılmaz. |
 | `NestedGroupPolicy` | Varsayılanı yoktur, açıkça `DirectMembershipOnly` veya `IncludeNested` yazılmalı (bkz. [8. gün](#bim_envanter-yetkisi-8-gün)). |
 | `ServiceAccountUserName` / `ServiceAccountPassword` | Düzenli yetki kontrolü ve çalışan araması için (9. gün ve sonrası). |
-| `TrustedCaCertificatePath` | İsteğe bağlı; domain controller sertifikasını veren CA'nın PEM/DER dosyası. Dosya yoksa, okunamıyorsa veya CA sertifikası değilse uygulama başlamaz. |
+| `TrustedCaCertificatePath` | İsteğe bağlı; domain controller sertifikasının zincirlendiği **kök** CA'nın PEM/DER dosyası. Dosya yoksa, okunamıyorsa, CA sertifikası değilse veya kendinden imzalı kök değilse (ara CA) uygulama başlamaz. |
 | `CheckCertificateRevocation` | Varsayılan `true`. |
-| `ConnectTimeoutSeconds` / `OperationTimeoutSeconds` | TCP+TLS için 1–60 sn (varsayılan 10) / her bind veya arama için 1–120 sn (varsayılan 15). |
+| `ConnectTimeoutSeconds` / `OperationTimeoutSeconds` | TCP+TLS için 1–60 sn (varsayılan 10) / her bind veya arama için 1–120 sn (varsayılan 15). Bir girişin tamamı ikisinin toplamıyla sınırlıdır. |
 
 `CHANGE-ME` içeren her değer reddedilir. `appsettings.Production.json` bu yer tutucularla gelir; gerçek değerler
 girilmeden üretimde uygulama başlamaz (bir test bunu dosyanın kendisi üzerinde denetler).
@@ -168,7 +183,7 @@ ayrılmış ad), kendi test CA'sı ile imzalanmış `dc1.envanter.test` LDAPS se
 oluşturur. Parolalar rastgele üretilir ve repo dışında kalır.
 
 Samba AD test domain'inde (bkz. betiğin kullanıcı tablosu) ve testlerin kendi kurduğu sunucularda koşturulan
-testler; hepsi geçti (birim 210, entegrasyon 131 test, SQL Server ve Samba AD açıkken art arda 3 kez):
+testler; hepsi geçti (birim 228, entegrasyon 138 test, SQL Server ve Samba AD açıkken):
 
 | Test | Nerede | Sonuç |
 | --- | --- | --- |
@@ -180,7 +195,8 @@ testler; hepsi geçti (birim 210, entegrasyon 131 test, SQL Server ve Samba AD a
 | **7. gün** Samba AD: doğru parola giriş yapar, AD kimliği (GUID, SID, görünen ad) döner, büyük/küçük harf ve `@domain` aynı kişiyi verir; yanlış parola ve olmayan kullanıcı `401`; pasif, süresi dolmuş, parola değiştirmesi gereken hesap doğru parolayla bile reddedilir; yanlış parolada hesap durumu açığa çıkmaz; boş parola, başka domain, `*`, filtre enjeksiyonu, `DOMAIN\kullanici` dizine hiç sorulmaz; erişilemeyen AD `503` | Integration | Geçti |
 | **7. gün** API: Türkçe alan hataları (`400`), form gönderimi reddi, 8 KB üstü gövde `413` (Kestrel), erişilemeyen AD `503`, deneme limiti `429` + `Retry-After`, ret yanıtlarında çerez yok, parola log dosyasında yok; başarılı girişte çerez özellikleri (`__Host-`, Secure, HttpOnly, SameSite=Strict, kalıcı değil), çerezle korumalı uca erişim, `AdminUsers` tek kayıt + her giriş için `SignedIn` audit kaydı (correlation ID ile) | Integration (SQL Server ile) | Geçti |
 | **8. gün** Samba AD: üye olmayan (`mehmet.user`), yalnızca aynı adlı tuzak gruba üye (`decoy.user`) ve `DirectMembershipOnly` altında iç içe üye (`nested.user`) parolası doğru olsa da `403`; doğrudan üye ve birincil grubu `Bim_Envanter` olan iki politikada da girer; iç içe üye yalnızca `IncludeNested` ile girer; SID tuzak gruba çevrilince yetki onu izler (ad değil SID); `BaseDn` dışındaki üye reddedilir; var olmayan SID ile kimse giremez | Integration | Geçti |
-| Kasıtlı bozma (mutation) denemeleri: üyelik kontrolünü kaldırmak, grubu adla eşleştirmek, politikaları karıştırmak, boş parolayı göndermek, `BaseDn` sınırını kaldırmak, sertifika ad kontrolünü veya kullanım amacı kontrolünü kaldırmak testleri kırdı | — | Yakalandı |
+| **İnceleme düzeltmeleri** Samba AD: başka hesabın UPN'i `clash.member` adını sahiplendiğinde o hesabın parolasıyla `clash.member` olarak girilemez (`401`, logda uyarı). Birim: "Who am I?" yanıtı başka hesap (`u:` ve `dn:` biçimi) → `401`, anlaşılmaz yanıt veya `userAccountControl` yok → `503`, kilitli hesap `401` ve maskelenmiş kullanıcı adı, kayıt hatası → `503` oturumsuz, ara CA sabitlenemez. Loopback: yanıt vermeyen bind istemci iptalinde hemen durur, giriş süre sınırında `503` olur. API: eşzamanlı 8 ilk giriş tek `AdminUsers` kaydı, veritabanı yokken `503 sign_in_unavailable`, Samba AD ile parola log dosyasında yok | Unit + Integration | Geçti |
+| Kasıtlı bozma (mutation) denemeleri: üyelik kontrolünü kaldırmak, grubu adla eşleştirmek, politikaları karıştırmak, boş parolayı göndermek, `BaseDn` sınırını kaldırmak, sertifika ad kontrolünü veya kullanım amacı kontrolünü kaldırmak, eşzamanlı ilk girişteki yeniden denemeyi kaldırmak testleri kırdı | — | Yakalandı |
 
 ### Ortam engeli: şirketin gerçek AD'si
 

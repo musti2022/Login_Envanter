@@ -2,7 +2,6 @@ using EnterpriseInventory.Application.Authentication;
 using EnterpriseInventory.Infrastructure.ActiveDirectory;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using Novell.Directory.Ldap;
 
 namespace EnterpriseInventory.IntegrationTests.ActiveDirectory;
 
@@ -116,7 +115,24 @@ public sealed class SambaSignInTests : IDisposable
         var result = await Service(Connections(options), logger).SignInAsync("ayse.admin", "Any-Password-1", CancellationToken.None);
 
         Assert.Equal(DirectorySignInStatus.DirectoryUnavailable, result.Status);
-        Assert.Contains(logger.Entries, e => e.Level == LogLevel.Error && e.Message.Contains("cannot be reached", StringComparison.Ordinal));
+
+        // Unreachable or timed out, depending on how fast this machine's resolver gives up on the name.
+        Assert.Contains(logger.Entries, e => e.Level == LogLevel.Error && e.Message.Contains("Active Directory is unavailable", StringComparison.Ordinal));
+    }
+
+    [ActiveDirectoryFact]
+    public async Task A_userprincipalname_claiming_a_members_logon_name_does_not_let_its_owner_in_as_that_member()
+    {
+        // clash.other is no member, but its userPrincipalName is clash.member@domain, so a bind as
+        // clash.member@domain is checked against clash.other's password.
+        var logger = new CapturingLogger<LdapDirectoryService>();
+
+        var result = await Service(Connections(TestActiveDirectory.Options()), logger)
+            .SignInAsync("clash.member", TestActiveDirectory.UserPassword, CancellationToken.None);
+
+        Assert.Equal(DirectorySignInStatus.InvalidCredentials, result.Status);
+        Assert.Null(result.Account);
+        Assert.Contains(logger.Entries, e => e.Level == LogLevel.Warning && e.Message.Contains(@"opened the account clash.other", StringComparison.Ordinal));
     }
 
     // --- Day 8: membership of the group with the configured SID ---------------------------------------------
@@ -214,7 +230,7 @@ public sealed class SambaSignInTests : IDisposable
 
         public int Count { get; private set; }
 
-        public Task<ILdapConnection> ConnectAsync(CancellationToken cancellationToken)
+        public Task<IDirectoryConnection> ConnectAsync(CancellationToken cancellationToken)
         {
             Count++;
             return _inner.ConnectAsync(cancellationToken);

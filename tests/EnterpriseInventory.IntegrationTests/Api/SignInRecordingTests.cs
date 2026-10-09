@@ -52,19 +52,20 @@ public class SignInRecordingTests(SqlServerDatabaseFixture database)
     [SqlServerFact]
     public async Task Each_sign_in_updates_one_administrator_record_and_is_audited()
     {
-        await using var api = new TestApiFactory(database.ConnectionString, useTestAuthentication: false, settings: LoginEndpointTests.FakeDirectory);
+        // A user no other test signs in with, so the audit trail holds exactly these sign-ins.
+        await using var api = new TestApiFactory(database.ConnectionString, useTestAuthentication: false, settings: FakeMember("dev.audit", "Denetim Testi"));
         var correlationIds = new List<string>();
         for (var signIn = 0; signIn < 2; signIn++)
         {
             using var client = api.CreateAnonymousClient();
-            using var login = await client.PostAsJsonAsync(LoginEndpointTests.Login, new { userName = "DEV.ADMIN", password = LoginEndpointTests.FakePassword });
+            using var login = await client.PostAsJsonAsync(LoginEndpointTests.Login, new { userName = "DEV.AUDIT", password = LoginEndpointTests.FakePassword });
             Assert.Equal(HttpStatusCode.OK, login.StatusCode);
             correlationIds.Add(login.Headers.GetValues("X-Correlation-ID").Single());
         }
 
         await using var context = database.CreateContext();
-        var administrator = await context.AdminUsers.SingleAsync(u => u.SamAccountName == "dev.admin");
-        Assert.Equal("Geliştirici Yönetici", administrator.DisplayName);
+        var administrator = await context.AdminUsers.SingleAsync(u => u.SamAccountName == "dev.audit");
+        Assert.Equal("Denetim Testi", administrator.DisplayName);
         Assert.True(administrator.LastLoginAt >= administrator.FirstLoginAt);
 
         var audit = await AuditEntries(context, administrator.Id);
@@ -72,10 +73,36 @@ public class SignInRecordingTests(SqlServerDatabaseFixture database)
         Assert.All(audit, entry =>
         {
             Assert.Equal(AuditAction.SignedIn, entry.Action);
-            Assert.Equal("dev.admin", entry.UserName);
+            Assert.Equal("dev.audit", entry.UserName);
             Assert.Null(entry.OldValues);
-            Assert.Equal("dev.admin", JsonDocument.Parse(entry.NewValues!).RootElement.GetProperty("SamAccountName").GetString());
+            Assert.Equal("dev.audit", JsonDocument.Parse(entry.NewValues!).RootElement.GetProperty("SamAccountName").GetString());
         });
+    }
+
+    [SqlServerFact]
+    public async Task Simultaneous_first_sign_ins_create_one_administrator_record()
+    {
+        await using var api = new TestApiFactory(database.ConnectionString, useTestAuthentication: false, settings: FakeMember("dev.parallel", "Eşzamanlı Test"));
+        var clients = Enumerable.Range(0, 8).Select(_ => api.CreateAnonymousClient()).ToList();
+        try
+        {
+            var logins = await Task.WhenAll(clients.Select(client =>
+                client.PostAsJsonAsync(LoginEndpointTests.Login, new { userName = "dev.parallel", password = LoginEndpointTests.FakePassword })));
+
+            Assert.All(logins, login => Assert.Equal(HttpStatusCode.OK, login.StatusCode));
+            foreach (var login in logins)
+            {
+                login.Dispose();
+            }
+        }
+        finally
+        {
+            clients.ForEach(client => client.Dispose());
+        }
+
+        await using var context = database.CreateContext();
+        var administrator = await context.AdminUsers.SingleAsync(u => u.SamAccountName == "dev.parallel");
+        Assert.Equal(8, (await AuditEntries(context, administrator.Id)).Count);
     }
 
     [ActiveDirectoryAndSqlServerFact]
@@ -100,6 +127,14 @@ public class SignInRecordingTests(SqlServerDatabaseFixture database)
         Assert.NotEqual(Guid.Empty, administrator.ObjectGuid);
         Assert.Contains(await AuditEntries(context, administrator.Id), a => a.Action == AuditAction.SignedIn);
     }
+
+    /// <summary>The fake directory with one more member, whose records only the calling test touches.</summary>
+    private static Dictionary<string, string?> FakeMember(string userName, string displayName) => new(LoginEndpointTests.FakeDirectory)
+    {
+        ["ActiveDirectory:FakeUsers:3:UserName"] = userName,
+        ["ActiveDirectory:FakeUsers:3:Password"] = LoginEndpointTests.FakePassword,
+        ["ActiveDirectory:FakeUsers:3:DisplayName"] = displayName,
+    };
 
     private static Task<List<AuditLog>> AuditEntries(Infrastructure.Persistence.ApplicationDbContext context, int administratorId) =>
         context.AuditLogs

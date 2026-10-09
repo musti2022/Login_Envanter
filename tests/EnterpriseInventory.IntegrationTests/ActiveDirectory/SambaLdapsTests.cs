@@ -1,6 +1,7 @@
 using EnterpriseInventory.Infrastructure.ActiveDirectory;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Logging.Abstractions;
+using Novell.Directory.Ldap;
 
 namespace EnterpriseInventory.IntegrationTests.ActiveDirectory;
 
@@ -17,9 +18,10 @@ public sealed class SambaLdapsTests
         using var factory = Factory(options);
 
         using var connection = await factory.ConnectAsync(CancellationToken.None);
-        var rootDse = await connection.ReadAsync(string.Empty, ["defaultNamingContext"], CancellationToken.None);
+        var rootDse = await connection.SearchAsync(string.Empty, LdapConnection.ScopeBase, "(objectClass=*)", ["defaultNamingContext"], CancellationToken.None);
 
-        Assert.Equal(options.BaseDn, rootDse.GetAttributeSet().GetAttribute("defaultNamingContext").StringValue, ignoreCase: true);
+        var entry = Assert.Single(rootDse.Entries);
+        Assert.Equal(options.BaseDn, entry.GetAttributeSet().Find("defaultNamingContext")?.StringValue, ignoreCase: true);
     }
 
     [ActiveDirectoryFact]

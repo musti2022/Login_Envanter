@@ -31,16 +31,13 @@ public class SignInHandlerTests
     }
 
     [Theory]
-    [InlineData(DirectorySignInStatus.InvalidCredentials, SignInOutcome.InvalidCredentials)]
     [InlineData(DirectorySignInStatus.AccountDisabled, SignInOutcome.AccountUnavailable)]
-    [InlineData(DirectorySignInStatus.AccountLocked, SignInOutcome.AccountUnavailable)]
     [InlineData(DirectorySignInStatus.AccountExpired, SignInOutcome.AccountUnavailable)]
     [InlineData(DirectorySignInStatus.PasswordExpired, SignInOutcome.AccountUnavailable)]
     [InlineData(DirectorySignInStatus.PasswordMustChange, SignInOutcome.AccountUnavailable)]
     [InlineData(DirectorySignInStatus.LogonNotPermitted, SignInOutcome.AccountUnavailable)]
     [InlineData(DirectorySignInStatus.NotAuthorized, SignInOutcome.NotAuthorized)]
-    [InlineData(DirectorySignInStatus.DirectoryUnavailable, SignInOutcome.DirectoryUnavailable)]
-    public async Task Refusals_are_mapped_and_nothing_is_recorded(DirectorySignInStatus status, SignInOutcome expected)
+    public async Task Refusals_after_the_password_was_accepted_name_the_user(DirectorySignInStatus status, SignInOutcome expected)
     {
         _directory.Result = DirectorySignInResult.Failed(status);
 
@@ -50,6 +47,50 @@ public class SignInHandlerTests
         Assert.Null(result.Account);
         Assert.Empty(_adminUsers.Recorded);
         Assert.Contains(_logger.Messages, m => m.Level >= LogLevel.Warning && m.Text.Contains("ayse.admin", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData(DirectorySignInStatus.InvalidCredentials, SignInOutcome.InvalidCredentials)]
+    [InlineData(DirectorySignInStatus.DirectoryUnavailable, SignInOutcome.DirectoryUnavailable)]
+
+    // AD reports a lockout whatever password was typed; telling the caller would confirm the account exists.
+    [InlineData(DirectorySignInStatus.AccountLocked, SignInOutcome.InvalidCredentials)]
+    public async Task Refusals_before_the_password_was_accepted_mask_the_user_name(DirectorySignInStatus status, SignInOutcome expected)
+    {
+        _directory.Result = DirectorySignInResult.Failed(status);
+
+        var result = await Handler().HandleAsync(new SignInRequest("ayse.admin", Password), CancellationToken.None);
+
+        Assert.Equal(expected, result.Outcome);
+        Assert.Empty(_adminUsers.Recorded);
+        var entry = Assert.Single(_logger.Messages, m => m.Level >= LogLevel.Warning);
+        Assert.Contains("ay… (10 characters)", entry.Text, StringComparison.Ordinal);
+        Assert.Contains(status == DirectorySignInStatus.DirectoryUnavailable ? "directory is unavailable" : status.ToString(), entry.Text, StringComparison.Ordinal);
+        Assert.DoesNotContain("ayse.admin", entry.Text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_sign_in_that_cannot_be_recorded_is_refused()
+    {
+        _directory.Result = DirectorySignInResult.Succeeded(Ayse);
+        _adminUsers.Failure = new InvalidOperationException("database down");
+
+        var result = await Handler().HandleAsync(new SignInRequest("ayse.admin", Password), CancellationToken.None);
+
+        Assert.Equal(SignInOutcome.SignInUnavailable, result.Outcome);
+        Assert.Null(result.Account);
+        Assert.Contains(_logger.Messages, m => m.Level == LogLevel.Error && m.Text.Contains("could not be recorded", StringComparison.Ordinal));
+        Assert.DoesNotContain(_logger.Messages, m => m.Text.Contains("signed in from", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_cancelled_sign_in_is_not_turned_into_a_refusal()
+    {
+        _directory.Result = DirectorySignInResult.Succeeded(Ayse);
+        _adminUsers.Failure = new OperationCanceledException();
+
+        await Assert.ThrowsAsync<OperationCanceledException>(
+            () => Handler().HandleAsync(new SignInRequest("ayse.admin", Password), CancellationToken.None));
     }
 
     [Fact]
@@ -128,8 +169,15 @@ public class SignInHandlerTests
     {
         public List<DirectoryAccount> Recorded { get; } = [];
 
+        public Exception? Failure { get; set; }
+
         public Task RecordSignInAsync(DirectoryAccount account, CancellationToken cancellationToken)
         {
+            if (Failure is not null)
+            {
+                return Task.FromException(Failure);
+            }
+
             Recorded.Add(account);
             return Task.CompletedTask;
         }

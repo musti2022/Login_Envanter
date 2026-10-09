@@ -102,40 +102,49 @@ public class LoginEndpointTests
     public async Task Passwords_never_reach_the_log()
     {
         const string password = "Sizmamali-Parola-7f3a";
-        var logFile = Path.Combine(Path.GetTempPath(), $"ei-login-{Guid.NewGuid():N}.log");
-        try
+        var settings = new Dictionary<string, string?>(FakeDirectory)
         {
-            await using (var api = new TestApiFactory(
-                useTestAuthentication: false,
-                settings: new Dictionary<string, string?>(FakeDirectory)
-                {
-                    // The password is right for the non-member and the disabled member, so they are refused only
-                    // after the password check.
-                    ["ActiveDirectory:FakeUsers:1:Password"] = password,
-                    ["ActiveDirectory:FakeUsers:2:Password"] = password,
-                    ["Serilog:MinimumLevel:Default"] = "Verbose",
-                    ["Serilog:MinimumLevel:Override:Microsoft.AspNetCore"] = "Verbose",
-                    ["Serilog:WriteTo:0:Name"] = "File",
-                    ["Serilog:WriteTo:0:Args:path"] = logFile,
-                    ["Serilog:WriteTo:0:Args:outputTemplate"] = "{Message:lj} {Properties:j}{NewLine}{Exception}",
-                }))
-            {
-                using var client = api.CreateAnonymousClient();
-                foreach (var userName in new[] { "dev.admin", "dev.user", "dev.disabled", "nobody" })
-                {
-                    using var response = await client.PostAsJsonAsync(Login, new { userName, password });
-                    Assert.True(response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden, $"{userName}: {response.StatusCode}");
-                }
-            }
+            // The password is right for the non-member and the disabled member, so they are refused only after the
+            // password check.
+            ["ActiveDirectory:FakeUsers:1:Password"] = password,
+            ["ActiveDirectory:FakeUsers:2:Password"] = password,
+        };
 
-            var log = await File.ReadAllTextAsync(logFile);
-            Assert.Contains("dev.user", log, StringComparison.Ordinal);
-            Assert.DoesNotContain(password, log, StringComparison.Ordinal);
-        }
-        finally
-        {
-            File.Delete(logFile);
-        }
+        var log = await SignInWithFileLogging(settings, [("dev.admin", password), ("dev.user", password), ("dev.disabled", password), ("nobody", password)]);
+
+        Assert.Contains("dev.user", log, StringComparison.Ordinal);
+        Assert.DoesNotContain(password, log, StringComparison.Ordinal);
+    }
+
+    [ActiveDirectoryFact]
+    public async Task Passwords_never_reach_the_log_with_the_test_directory()
+    {
+        const string wrongPassword = "Sizmamali-Yanlis-Parola-41c9";
+        var password = TestActiveDirectory.UserPassword;
+
+        // A member (accepted by the directory, then refused because the test database is unreachable), a
+        // non-member, a disabled member, an unknown user, a logon name another account's UPN claims, and a wrong password.
+        var log = await SignInWithFileLogging(
+            TestActiveDirectory.Settings(),
+            [("ayse.admin", password), ("mehmet.user", password), ("disabled.user", password), ("nobody.here", password),
+             ("clash.member", password), ("ayse.admin", wrongPassword)]);
+
+        Assert.Contains("mehmet.user", log, StringComparison.Ordinal);
+        Assert.Contains("could not be recorded", log, StringComparison.Ordinal);
+        Assert.DoesNotContain(password, log, StringComparison.Ordinal);
+        Assert.DoesNotContain(wrongPassword, log, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_sign_in_that_cannot_be_recorded_starts_no_session()
+    {
+        // The directory accepts dev.admin; the database cannot be reached.
+        await using var api = new TestApiFactory(useTestAuthentication: false, settings: FakeDirectory);
+        using var client = api.CreateAnonymousClient();
+
+        using var response = await client.PostAsJsonAsync(Login, new { userName = "dev.admin", password = FakePassword });
+
+        await AssertRefused(response, HttpStatusCode.ServiceUnavailable, "sign_in_unavailable", "Giriş şu anda yapılamıyor.");
     }
 
     [Theory]
@@ -160,6 +169,7 @@ public class LoginEndpointTests
     [InlineData("decoy.user", true, HttpStatusCode.Forbidden, "not_authorized")]
     [InlineData("disabled.user", true, HttpStatusCode.Forbidden, "account_unavailable")]
     [InlineData("disabled.user", false, HttpStatusCode.Unauthorized, "invalid_credentials")]
+    [InlineData("clash.member", true, HttpStatusCode.Unauthorized, "invalid_credentials")]
     public async Task Test_directory_refusals(string userName, bool rightPassword, HttpStatusCode status, string code)
     {
         await using var api = new TestApiFactory(useTestAuthentication: false, settings: TestActiveDirectory.Settings());
@@ -187,6 +197,42 @@ public class LoginEndpointTests
         ["ActiveDirectory:FakeUsers:2:Password"] = FakePassword,
         ["ActiveDirectory:FakeUsers:2:IsDisabled"] = "true",
     };
+
+    /// <summary>Signs in with each user name and password while every log level is written to a file; returns the file.</summary>
+    private static async Task<string> SignInWithFileLogging(
+        IReadOnlyDictionary<string, string?> settings, IReadOnlyList<(string UserName, string Password)> attempts)
+    {
+        var logFile = Path.Combine(Path.GetTempPath(), $"ei-login-{Guid.NewGuid():N}.log");
+        try
+        {
+            await using (var api = new TestApiFactory(
+                useTestAuthentication: false,
+                settings: new Dictionary<string, string?>(settings)
+                {
+                    ["Serilog:MinimumLevel:Default"] = "Verbose",
+                    ["Serilog:MinimumLevel:Override:Microsoft.AspNetCore"] = "Verbose",
+                    ["Serilog:WriteTo:0:Name"] = "File",
+                    ["Serilog:WriteTo:0:Args:path"] = logFile,
+                    ["Serilog:WriteTo:0:Args:outputTemplate"] = "{Message:lj} {Properties:j}{NewLine}{Exception}",
+                }))
+            {
+                using var client = api.CreateAnonymousClient();
+                foreach (var (userName, password) in attempts)
+                {
+                    using var response = await client.PostAsJsonAsync(Login, new { userName, password });
+                    Assert.True(
+                        response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden or HttpStatusCode.ServiceUnavailable,
+                        $"{userName}: {response.StatusCode}");
+                }
+            }
+
+            return await File.ReadAllTextAsync(logFile);
+        }
+        finally
+        {
+            File.Delete(logFile);
+        }
+    }
 
     private static async Task AssertRefused(HttpResponseMessage response, HttpStatusCode status, string code, string? title)
     {
