@@ -26,6 +26,15 @@ public sealed class ActiveDirectoryOptions
     /// <summary>Where users are searched, e.g. <c>DC=corp,DC=example,DC=com</c> or an OU inside the domain.</summary>
     public string BaseDn { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Where employees who can be given assets are searched, when that differs from <see cref="BaseDn"/> (for
+    /// example the whole domain while sign-in is limited to an OU). Empty means <see cref="BaseDn"/>.
+    /// </summary>
+    public string? EmployeeSearchBaseDn { get; set; }
+
+    /// <summary>The search base for employees: <see cref="EmployeeSearchBaseDn"/>, or <see cref="BaseDn"/> when it is empty.</summary>
+    internal string EmployeeBaseDn => string.IsNullOrWhiteSpace(EmployeeSearchBaseDn) ? BaseDn : EmployeeSearchBaseDn;
+
     /// <summary>For messages and documentation only; access is decided by <see cref="AllowedGroupSid"/>.</summary>
     public string AllowedGroupName { get; set; } = "Bim_Envanter";
 
@@ -38,6 +47,12 @@ public sealed class ActiveDirectoryOptions
     public string ServiceAccountUserName { get; set; } = string.Empty;
 
     public string ServiceAccountPassword { get; set; } = string.Empty;
+
+    /// <summary>A logon name is bound as <c>name@Domain</c>; a user principal name or a DN is used as written.</summary>
+    internal string ServiceAccountBindName =>
+        ServiceAccountUserName.Contains('@', StringComparison.Ordinal) || ServiceAccountUserName.Contains('=', StringComparison.Ordinal)
+            ? ServiceAccountUserName
+            : $"{ServiceAccountUserName}@{Domain}";
 
     /// <summary>
     /// Optional PEM or DER file of the self-signed root CA the domain controller's certificate chains to. When set,
@@ -77,6 +92,13 @@ public sealed class FakeDirectoryUser
     public bool IsAllowedGroupMember { get; set; } = true;
 
     public bool IsDisabled { get; set; }
+
+    /// <summary>Shown when the user is found as an employee to give an asset to.</summary>
+    public string? Email { get; set; }
+
+    public string? Department { get; set; }
+
+    public string? Title { get; set; }
 }
 
 public enum DirectoryMode

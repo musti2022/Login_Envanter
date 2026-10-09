@@ -1,4 +1,4 @@
-# Active Directory (6. gün: LDAPS ve TLS, 7. gün: giriş, 8. gün: Bim_Envanter yetkisi, 9. gün: yeniden kontrol)
+# Active Directory (6. gün: LDAPS ve TLS, 7. gün: giriş, 8. gün: Bim_Envanter yetkisi, 9. gün: yeniden kontrol, 21. gün: çalışan araması)
 
 Kod: `src/EnterpriseInventory.Infrastructure/ActiveDirectory`, `src/EnterpriseInventory.Application/Authentication`,
 `src/EnterpriseInventory.Api/Auth`. Testler: `tests/EnterpriseInventory.UnitTests/ActiveDirectory`,
@@ -133,6 +133,27 @@ Aynı sertifika kuralları ve süre sınırı geçerlidir. Kurallar ve testler: 
 Servis hesabı adı `ServiceAccountUserName` olarak `svc.envanter` (`@Domain` eklenir), `svc.envanter@ornek.local` veya
 DN biçiminde yazılabilir. Hesabın yalnızca okuma yetkisi olmalıdır; parolası loga yazılmaz.
 
+## Çalışan araması (21. gün)
+
+Demirbaş zimmetlenecek çalışan AD'de aranır: `GET /api/employees/search?q=<ad>` (yalnızca Administrator).
+Aranan kişinin `Bim_Envanter` üyesi olması **gerekmez**; uygulamaya giren yöneticiler (`AdminUsers`) ile demirbaş
+verilen çalışanlar (`Employees`) veri modelinde ayrıdır.
+
+- Arama **servis hesabıyla**, LDAPS üzerinden ve girişle aynı sertifika kuralları ve süre sınırıyla yapılır.
+  Arama tabanı `EmployeeSearchBaseDn`, boşsa `BaseDn`'dir.
+- Yazılan her kelime kişinin oturum adının (`sAMAccountName`), görünen adının, adının (`givenName`), soyadının
+  (`sn`) veya e-postasının **başıyla** eşleşmelidir: "mehmet öz" Mehmet Öztürk'ü bulur, "hmet" kimseyi bulmaz. Baştan
+  eşleşme AD'de indeksli aramadır; "içinde geçen" aramalar büyük dizinlerde yavaş olduğu için kullanılmaz.
+- Yalnızca kişiler (`objectCategory=person`, bilgisayar hesapları değil) ve **etkin** hesaplar listelenir
+  (`userAccountControl` ACCOUNTDISABLE biti kapalı). Kullanıcının yazdığı `*`, `(`, `)`, `\` LDAP filtresine kaçışlanır
+  (RFC 4515); joker karakter yalnızca uygulamanın eklediği sondaki `*`'dır.
+- En fazla 20 kişi döner; daha fazlası varsa `hasMore: true` döner ve ekran aramayı daraltmayı önerir. İstenen
+  sayının bir fazlası istenir; boyut sınırını bildirmeyen sunucularda da fazlası okunmaz.
+- Girdi kuralları: 2–64 karakter, en fazla 4 kelime, kontrol karakteri yok (`400`, Türkçe alan hatası). AD'ye
+  ulaşılamazsa, servis hesabı reddedilirse veya yanıt anlaşılamazsa `503 directory_unavailable` döner.
+- Yanıt: `objectGuid`, `userName`, `displayName`, `email`, `department`, `title`. Zimmet verilirken kişi
+  `objectGuid` ile yeniden okunur (22. gün); arama sonucundaki bilgiye güvenilmez.
+
 ## Ayarlar ve başlangıç denetimi
 
 `ActiveDirectory` bölümü uygulama başlarken doğrulanır (`ValidateOnStart`); hatalıysa uygulama hangi anahtarın
@@ -145,9 +166,10 @@ neden hatalı olduğunu yazarak durur.
 | `ServerFqdn` | Domain controller'ın tam DNS adı. Şema (`ldaps://`), port veya IP adresi kabul edilmez. |
 | `Port` / `UseLdaps` | 1–65535 / mutlaka `true`. |
 | `BaseDn` | DN biçiminde ve domain'in içinde olmalı, ör. `DC=ornek,DC=local` veya `OU=Personel,DC=ornek,DC=local`. |
+| `EmployeeSearchBaseDn` | İsteğe bağlı; zimmet verilecek çalışanların arandığı yer, `BaseDn`'den farklıysa (ör. giriş bir OU ile sınırlıyken çalışanlar tüm domain'de). Boşsa `BaseDn`. Aynı DN kuralları geçerlidir. |
 | `AllowedGroupSid` | `Bim_Envanter` grubunun SID'i, `S-1-5-21-…-RID` biçiminde. Grup adı yetki için kullanılmaz. |
 | `NestedGroupPolicy` | Varsayılanı yoktur, açıkça `DirectMembershipOnly` veya `IncludeNested` yazılmalı (bkz. [8. gün](#bim_envanter-yetkisi-8-gün)). |
-| `ServiceAccountUserName` / `ServiceAccountPassword` | **Zorunlu.** Açık oturumların düzenli yetki kontrolü (9. gün) ve ileride çalışan araması için okuma yetkili hesap. Parola repoya yazılmaz; üretimde ortam değişkeni veya güvenli yapılandırma ile verilir. |
+| `ServiceAccountUserName` / `ServiceAccountPassword` | **Zorunlu.** Açık oturumların düzenli yetki kontrolü (9. gün) ve çalışan araması (21. gün) için okuma yetkili hesap. Parola repoya yazılmaz; üretimde ortam değişkeni veya güvenli yapılandırma ile verilir. |
 | `TrustedCaCertificatePath` | İsteğe bağlı; domain controller sertifikasının zincirlendiği **kök** CA'nın PEM/DER dosyası. Dosya yoksa, okunamıyorsa, CA sertifikası değilse veya kendinden imzalı kök değilse (ara CA) uygulama başlamaz. |
 | `CheckCertificateRevocation` | Varsayılan `true`. |
 | `ConnectTimeoutSeconds` / `OperationTimeoutSeconds` | TCP+TLS için 1–60 sn (varsayılan 10) / her bind veya arama için 1–120 sn (varsayılan 15). Bir girişin tamamı ikisinin toplamıyla sınırlıdır. |
@@ -166,7 +188,11 @@ dotnet user-secrets set "ActiveDirectory:FakeUsers:0:UserName" "dev.admin"
 dotnet user-secrets set "ActiveDirectory:FakeUsers:0:Password" "<kendi belirlediğiniz parola>"
 dotnet user-secrets set "ActiveDirectory:FakeUsers:0:DisplayName" "Geliştirici Yönetici"   # isteğe bağlı
 # İsteğe bağlı: ":IsAllowedGroupMember" "false" (grup üyesi olmayan), ":IsDisabled" "true" (pasif hesap)
+# İsteğe bağlı, çalışan aramasında görünür: ":Email", ":Department", ":Title"
 ```
+
+Sahte dizindeki her etkin kullanıcı (grup üyesi olsun olmasın) çalışan aramasında da bulunur; arama büyük/küçük
+harf ve aksan farkını, i/ı/İ/I farkını gözetmez.
 
 Sahte dizin gerçek dizinle aynı sonuçları üretir (yanlış parola, üye değil, pasif) ve her kullanıcıya adından
 türetilen sabit bir `objectGUID`/SID verir. Parolalar sabit sürede karşılaştırılır. `Development` dışındaki her
@@ -207,6 +233,8 @@ testler; hepsi geçti (9. gün sonunda birim 270, entegrasyon 176 test, SQL Serv
 | **8. gün** Samba AD: üye olmayan (`mehmet.user`), yalnızca aynı adlı tuzak gruba üye (`decoy.user`) ve `DirectMembershipOnly` altında iç içe üye (`nested.user`) parolası doğru olsa da `403`; doğrudan üye ve birincil grubu `Bim_Envanter` olan iki politikada da girer; iç içe üye yalnızca `IncludeNested` ile girer; SID tuzak gruba çevrilince yetki onu izler (ad değil SID); `BaseDn` dışındaki üye reddedilir; var olmayan SID ile kimse giremez | Integration | Geçti |
 | **İnceleme düzeltmeleri** Samba AD: başka hesabın UPN'i `clash.member` adını sahiplendiğinde o hesabın parolasıyla `clash.member` olarak girilemez (`401`, logda uyarı). Birim: "Who am I?" yanıtı başka hesap (`u:` ve `dn:` biçimi) → `401`, anlaşılmaz yanıt veya `userAccountControl` yok → `503`, kilitli hesap `401` ve maskelenmiş kullanıcı adı, kayıt hatası → `503` oturumsuz, ara CA sabitlenemez. Loopback: yanıt vermeyen bind istemci iptalinde hemen durur, giriş süre sınırında `503` olur. API: eşzamanlı 8 ilk giriş tek `AdminUsers` kaydı, veritabanı yokken `503 sign_in_unavailable`, Samba AD ile parola log dosyasında yok | Unit + Integration | Geçti |
 | **9. gün** Samba AD, servis hesabıyla yeniden kontrol: doğrudan, birincil grup ve iç içe (politikaya göre) üye `Allowed`; üye olmayan ve tuzak grup üyesi `NotAuthorized`; pasif, süresi dolmuş hesap; bilinmeyen GUID ve `BaseDn` dışı `AccountNotFound`; yanlış servis parolası `DirectoryUnavailable` (parola logda yok) | Integration | Geçti |
+| **21. gün** Samba AD, çalışan araması: `Bim_Envanter` üyesi olmayan `mehmet.user` e-postasıyla bulunur; "Öztürk", "mehmet öz", "MEHMET.U", "mehmet.user@" onu bulur (Türkçe harflerde büyük/küçük harf farkı gözetilmez); "hmet" ve eşleşmeyen ikinci kelime kimseyi bulmaz; pasif hesap (`disabled.user`) listelenmez; `*)(sAMAccountName=*` hata vermeden kimseyi bulmaz; sınırdan fazla eşleşme `hasMore` olur; `objectGUID` ile yeniden okuma aynı kişiyi ve pasif hesabın durumunu verir, bilinmeyen GUID `NotFound`; `EmployeeSearchBaseDn` dışı bulunmaz; yanlış servis parolası `DirectoryUnavailable` (parola logda yok). API: ziyaretçi `401`, rolsüz `403`, Samba ile `mehmet.user` döner, sahte dizin de yanıt verir, kısa/uzun arama `400`, erişilemeyen AD `503` | Integration | Geçti |
+| **21. gün** Birim: filtre metni (kişi, etkin hesap, kelime başına beş öznitelik), `*`, `(`, `)`, `\` kaçışı, arama tabanı seçimi, kimliksiz kaydın atlanması, `userAccountControl` yok/okunamaz ise pasif sayılması, aynı GUID'li iki hesap `DirectoryUnavailable`; servis: girdi kuralları, Türkçe sıralama, pasiflerin çıkarılması; sahte dizin araması | Unit | Geçti |
 | Kasıtlı bozma (mutation) denemeleri: üyelik kontrolünü kaldırmak, grubu adla eşleştirmek, politikaları karıştırmak, boş parolayı göndermek, `BaseDn` sınırını kaldırmak, sertifika ad kontrolünü veya kullanım amacı kontrolünü kaldırmak, eşzamanlı ilk girişteki yeniden denemeyi kaldırmak testleri kırdı | — | Yakalandı |
 
 ### Ortam engeli: şirketin gerçek AD'si

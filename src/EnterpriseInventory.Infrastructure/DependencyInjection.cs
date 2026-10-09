@@ -2,6 +2,7 @@ using EnterpriseInventory.Application.Abstractions;
 using EnterpriseInventory.Application.Assets;
 using EnterpriseInventory.Application.Authentication;
 using EnterpriseInventory.Application.Dashboard;
+using EnterpriseInventory.Application.Employees;
 using EnterpriseInventory.Application.Lookups;
 using EnterpriseInventory.Infrastructure.ActiveDirectory;
 using EnterpriseInventory.Infrastructure.Assets;
@@ -66,17 +67,25 @@ public static class DependencyInjection
         services.AddSingleton<IValidateOptions<ActiveDirectoryOptions>, ActiveDirectoryOptionsValidator>();
         services.AddSingleton<ILdapConnectionFactory, LdapConnectionFactory>();
         services.AddScoped<LdapDirectoryService>();
+        services.AddScoped<LdapEmployeeDirectory>();
         services.AddScoped<FakeDirectoryService>();
 
         // The mode is validated at startup: Fake can only be chosen in Development.
         services.AddScoped<IDirectoryService>(serviceProvider =>
-            serviceProvider.GetRequiredService<IOptions<ActiveDirectoryOptions>>().Value.Mode == DirectoryMode.Fake
+            IsFake(serviceProvider)
                 ? serviceProvider.GetRequiredService<FakeDirectoryService>()
                 : serviceProvider.GetRequiredService<LdapDirectoryService>());
+        services.AddScoped<IEmployeeDirectory>(serviceProvider =>
+            IsFake(serviceProvider)
+                ? serviceProvider.GetRequiredService<FakeDirectoryService>()
+                : serviceProvider.GetRequiredService<LdapEmployeeDirectory>());
 
         // A directory outage leaves existing sessions working, so it degrades the health report instead of
         // failing readiness.
         healthChecks.AddCheck<ActiveDirectoryHealthCheck>(
             "active-directory", failureStatus: HealthStatus.Degraded, timeout: TimeSpan.FromSeconds(30));
     }
+
+    private static bool IsFake(IServiceProvider serviceProvider) =>
+        serviceProvider.GetRequiredService<IOptions<ActiveDirectoryOptions>>().Value.Mode == DirectoryMode.Fake;
 }

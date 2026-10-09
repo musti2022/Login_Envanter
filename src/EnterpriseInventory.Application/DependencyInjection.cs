@@ -1,5 +1,6 @@
 using EnterpriseInventory.Application.Assets;
 using EnterpriseInventory.Application.Authentication;
+using EnterpriseInventory.Application.Employees;
 using EnterpriseInventory.Application.Lookups;
 using FluentValidation;
 using Microsoft.Extensions.DependencyInjection;
@@ -14,6 +15,7 @@ public static class DependencyInjection
         services.AddScoped<SignInHandler>();
         services.AddScoped<AssetService>();
         services.AddScoped<LookupService>();
+        services.AddScoped<EmployeeService>();
         return services;
     }
 }

@@ -119,7 +119,7 @@ internal sealed partial class LdapDirectoryService(
             using var connection = await connectionFactory.ConnectAsync(deadline.Token).ConfigureAwait(false);
             try
             {
-                await connection.BindAsync(ServiceAccountBindName(settings), settings.ServiceAccountPassword, deadline.Token).ConfigureAwait(false);
+                await connection.BindAsync(settings.ServiceAccountBindName, settings.ServiceAccountPassword, deadline.Token).ConfigureAwait(false);
             }
             catch (LdapException ex) when (ex.ResultCode == LdapException.InvalidCredentials)
             {
@@ -177,12 +177,6 @@ internal sealed partial class LdapDirectoryService(
             return DirectoryAccessStatus.DirectoryUnavailable;
         }
     }
-
-    /// <summary>A logon name is bound as <c>name@Domain</c>; a user principal name or a DN is used as written.</summary>
-    private static string ServiceAccountBindName(ActiveDirectoryOptions settings) =>
-        settings.ServiceAccountUserName.Contains('@', StringComparison.Ordinal) || settings.ServiceAccountUserName.Contains('=', StringComparison.Ordinal)
-            ? settings.ServiceAccountUserName
-            : $"{settings.ServiceAccountUserName}@{settings.Domain}";
 
     private async Task<bool> IsAllowedAsync(
         IDirectoryConnection connection, ActiveDirectoryOptions settings, DirectoryUserEntry user, CancellationToken cancellationToken)

@@ -5,7 +5,8 @@ namespace EnterpriseInventory.Infrastructure.ActiveDirectory;
 
 /// <summary>
 /// An LDAPS connection whose certificate has been checked, reduced to the operations the application needs.
-/// Searches never follow referrals and return at most two entries: the application only ever looks for one.
+/// Searches never follow referrals. <see cref="IDirectoryConnection.SearchAsync"/> returns at most two entries, for
+/// lookups that expect one; <see cref="IDirectoryConnection.SearchManyAsync"/> returns lists up to a given size.
 /// Cancelling an operation's token closes the connection, so nothing waits on a domain controller that stopped
 /// answering.
 /// </summary>
@@ -23,10 +24,18 @@ internal interface IDirectoryConnection : IDisposable
 
     Task<DirectorySearchResult> SearchAsync(
         string searchBase, int scope, string filter, IReadOnlyCollection<string> attributes, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// A subtree search for a list of entries, such as people matching a name: at most <paramref name="maxResults"/>
+    /// of them, with <see cref="DirectorySearchResult.Truncated"/> set when the directory had more.
+    /// </summary>
+    Task<DirectorySearchResult> SearchManyAsync(
+        string searchBase, string filter, IReadOnlyCollection<string> attributes, int maxResults, CancellationToken cancellationToken);
 }
 
 /// <param name="SkippedReferrals">Continuation references returned instead of entries; they are never followed.</param>
-internal sealed record DirectorySearchResult(IReadOnlyList<LdapEntry> Entries, int SkippedReferrals);
+/// <param name="Truncated">The directory stopped at the size limit: more entries matched than were returned.</param>
+internal sealed record DirectorySearchResult(IReadOnlyList<LdapEntry> Entries, int SkippedReferrals, bool Truncated = false);
 
 internal sealed class LdapDirectoryConnection : IDirectoryConnection
 {
@@ -65,11 +74,27 @@ internal sealed class LdapDirectoryConnection : IDirectoryConnection
 
     public Task<DirectorySearchResult> SearchAsync(
         string searchBase, int scope, string filter, IReadOnlyCollection<string> attributes, CancellationToken cancellationToken) =>
+        SearchAsync(searchBase, scope, filter, attributes, MaxSearchResults, cancellationToken);
+
+    public async Task<DirectorySearchResult> SearchManyAsync(
+        string searchBase, string filter, IReadOnlyCollection<string> attributes, int maxResults, CancellationToken cancellationToken)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(maxResults, 1);
+
+        // One more than wanted: if it comes, there are more. Not every directory reports its size limit.
+        var result = await SearchAsync(searchBase, LdapConnection.ScopeSub, filter, attributes, maxResults + 1, cancellationToken).ConfigureAwait(false);
+        return result.Entries.Count > maxResults
+            ? result with { Entries = [.. result.Entries.Take(maxResults)], Truncated = true }
+            : result;
+    }
+
+    private Task<DirectorySearchResult> SearchAsync(
+        string searchBase, int scope, string filter, IReadOnlyCollection<string> attributes, int maxResults, CancellationToken cancellationToken) =>
         RunAsync(async () =>
         {
             var constraints = new LdapSearchConstraints
             {
-                MaxResults = MaxSearchResults,
+                MaxResults = maxResults,
                 ServerTimeLimit = _operationTimeoutSeconds,
                 TimeLimit = (int)TimeSpan.FromSeconds(_operationTimeoutSeconds).TotalMilliseconds,
                 ReferralFollowing = false,
@@ -79,7 +104,8 @@ internal sealed class LdapDirectoryConnection : IDirectoryConnection
                 .ConfigureAwait(false);
             var entries = new List<LdapEntry>();
             var skippedReferrals = 0;
-            while (await results.HasMoreAsync(cancellationToken).ConfigureAwait(false))
+            var truncated = false;
+            while (entries.Count < maxResults && await results.HasMoreAsync(cancellationToken).ConfigureAwait(false))
             {
                 try
                 {
@@ -90,9 +116,15 @@ internal sealed class LdapDirectoryConnection : IDirectoryConnection
                     // AD refers subtree searches at the domain root to its DNS and configuration partitions.
                     skippedReferrals++;
                 }
+                catch (LdapException ex) when (ex.ResultCode == LdapException.SizeLimitExceeded)
+                {
+                    // The entries before the limit are complete; the directory just had more.
+                    truncated = true;
+                    break;
+                }
             }
 
-            return new DirectorySearchResult(entries, skippedReferrals);
+            return new DirectorySearchResult(entries, skippedReferrals, truncated);
         }, cancellationToken);
 
     public void Dispose()

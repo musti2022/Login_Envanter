@@ -94,6 +94,30 @@ public sealed class ActiveDirectoryOptionsValidatorTests : IDisposable
     }
 
     [Theory]
+    [InlineData("corp.example.com", "EmployeeSearchBaseDn must be a distinguished name")]
+    [InlineData("DC=other,DC=example,DC=com", "EmployeeSearchBaseDn must be inside the domain corp.example.com")]
+    [InlineData("OU=CHANGE-ME,DC=corp,DC=example,DC=com", "EmployeeSearchBaseDn still contains the CHANGE-ME placeholder")]
+    public void The_employee_search_base_must_be_inside_the_domain(string baseDn, string expected)
+    {
+        var options = ValidOptions();
+        options.EmployeeSearchBaseDn = baseDn;
+
+        AssertFails(options, expected);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("OU=Personel,DC=corp,DC=example,DC=com")]
+    public void The_employee_search_base_is_optional(string? baseDn)
+    {
+        var options = ValidOptions();
+        options.EmployeeSearchBaseDn = baseDn;
+
+        Assert.True(Validate(options).Succeeded);
+    }
+
+    [Theory]
     [InlineData("Bim_Envanter")]
     [InlineData("S-1-5-32-544")]
     [InlineData("S-1-5-21-1-2-3")]

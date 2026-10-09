@@ -331,6 +331,10 @@ public sealed class LdapDirectoryServiceTests : IDisposable
             return Task.FromResult(new DirectorySearchResult([.. Users], SkippedReferrals));
         }
 
+        public Task<DirectorySearchResult> SearchManyAsync(
+            string searchBase, string filter, IReadOnlyCollection<string> attributes, int maxResults, CancellationToken cancellationToken) =>
+            SearchAsync(searchBase, LdapConnection.ScopeSub, filter, attributes, cancellationToken);
+
         public void Dispose() => IsDisposed = true;
     }
 

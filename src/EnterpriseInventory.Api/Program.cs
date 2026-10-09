@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using EnterpriseInventory.Api.Assets;
 using EnterpriseInventory.Api.Auth;
 using EnterpriseInventory.Api.Dashboard;
+using EnterpriseInventory.Api.Employees;
 using EnterpriseInventory.Api.Health;
 using EnterpriseInventory.Api.Http;
 using EnterpriseInventory.Api.Lookups;
@@ -87,6 +88,7 @@ try
     app.MapAssetEndpoints();
     app.MapDashboardEndpoints();
     app.MapLookupEndpoints();
+    app.MapEmployeeEndpoints();
 
     await app.RunAsync();
 }

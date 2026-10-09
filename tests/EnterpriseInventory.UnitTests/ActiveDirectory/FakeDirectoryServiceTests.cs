@@ -1,4 +1,5 @@
 using EnterpriseInventory.Application.Authentication;
+using EnterpriseInventory.Application.Employees;
 using EnterpriseInventory.Infrastructure.ActiveDirectory;
 using Microsoft.Extensions.Options;
 
@@ -81,13 +82,60 @@ public class FakeDirectoryServiceTests
         Assert.Equal(DirectoryAccessStatus.AccountNotFound, await Service().CheckAccessAsync(Guid.NewGuid(), CancellationToken.None));
     }
 
+    [Theory]
+    [InlineData("dev.u")]
+    [InlineData("işık")]
+    [InlineData("IŞIK")]
+    [InlineData("isik")]
+    [InlineData("deniz ış")]
+    [InlineData("deniz@")]
+    public async Task Employees_are_found_by_the_start_of_their_names_whether_or_not_they_may_sign_in(string term)
+    {
+        var result = await Service().SearchAsync(term, 10, CancellationToken.None);
+
+        var person = Assert.Single(result.People);
+        Assert.Equal("dev.user", person.SamAccountName);
+        Assert.Equal("Bilgi İşlem", person.Department);
+        Assert.True(person.IsEnabled);
+    }
+
+    [Fact]
+    public async Task Disabled_users_are_not_found_and_more_matches_than_the_limit_are_reported()
+    {
+        var all = await Service().SearchAsync("dev", 10, CancellationToken.None);
+        var limited = await Service().SearchAsync("dev", 1, CancellationToken.None);
+
+        Assert.Equal(["dev.admin", "dev.user"], all.People.Select(p => p.SamAccountName));
+        Assert.False(all.HasMore);
+        Assert.Single(limited.People);
+        Assert.True(limited.HasMore);
+    }
+
+    [Fact]
+    public async Task An_employee_is_found_again_by_the_identity_a_search_gave()
+    {
+        var service = Service();
+        var found = Assert.Single((await service.SearchAsync("deniz", 10, CancellationToken.None)).People);
+
+        Assert.Equal(found, (await service.FindAsync(found.ObjectGuid, CancellationToken.None)).Person);
+        Assert.Equal(DirectoryLookupStatus.NotFound, (await service.FindAsync(Guid.NewGuid(), CancellationToken.None)).Status);
+    }
+
     private static FakeDirectoryService Service() => new(Options(), new TestHostEnvironment("Development"));
 
     private static IOptions<ActiveDirectoryOptions> Options()
     {
         var options = new ActiveDirectoryOptions { Mode = DirectoryMode.Fake };
         options.FakeUsers.Add(new FakeDirectoryUser { UserName = "dev.admin", Password = Password, DisplayName = "Geliştirici Yönetici" });
-        options.FakeUsers.Add(new FakeDirectoryUser { UserName = "dev.user", Password = Password, IsAllowedGroupMember = false });
+        options.FakeUsers.Add(new FakeDirectoryUser
+        {
+            UserName = "dev.user",
+            Password = Password,
+            DisplayName = "Deniz Işık",
+            Email = "deniz@example.invalid",
+            Department = "Bilgi İşlem",
+            IsAllowedGroupMember = false,
+        });
         options.FakeUsers.Add(new FakeDirectoryUser { UserName = "dev.disabled", Password = Password, IsDisabled = true });
         return Microsoft.Extensions.Options.Options.Create(options);
     }

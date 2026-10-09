@@ -117,6 +117,19 @@ internal sealed partial class ActiveDirectoryOptionsValidator(IHostEnvironment e
                 errors.Add($"ActiveDirectory:BaseDn must be inside the domain {options.Domain} (end with {DistinguishedNames.FromDnsDomain(options.Domain)}).");
             }
         }
+
+        if (!string.IsNullOrWhiteSpace(options.EmployeeSearchBaseDn) && RejectPlaceholder(options.EmployeeSearchBaseDn, "EmployeeSearchBaseDn", errors))
+        {
+            if (!DistinguishedName().IsMatch(options.EmployeeSearchBaseDn))
+            {
+                errors.Add("ActiveDirectory:EmployeeSearchBaseDn must be a distinguished name such as OU=Personel,DC=corp,DC=example,DC=com.");
+            }
+            else if (DnsName().IsMatch(options.Domain)
+                && !DistinguishedNames.IsSameOrInside(options.EmployeeSearchBaseDn, DistinguishedNames.FromDnsDomain(options.Domain)))
+            {
+                errors.Add($"ActiveDirectory:EmployeeSearchBaseDn must be inside the domain {options.Domain} (end with {DistinguishedNames.FromDnsDomain(options.Domain)}).");
+            }
+        }
     }
 
     private static void ValidateAccess(ActiveDirectoryOptions options, List<string> errors)
