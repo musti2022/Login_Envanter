@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json.Serialization;
 using EnterpriseInventory.Api.Assets;
 using EnterpriseInventory.Api.Auth;
+using EnterpriseInventory.Api.Dashboard;
 using EnterpriseInventory.Api.Health;
 using EnterpriseInventory.Api.Http;
 using EnterpriseInventory.Api.Security;
@@ -74,6 +75,7 @@ try
     app.MapApiHealthChecks();
     app.MapAuthEndpoints();
     app.MapAssetEndpoints();
+    app.MapDashboardEndpoints();
 
     await app.RunAsync();
 }

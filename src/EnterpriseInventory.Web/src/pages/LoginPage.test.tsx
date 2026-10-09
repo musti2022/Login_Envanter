@@ -141,8 +141,10 @@ describe('signing out', () => {
     fireEvent.click(screen.getAllByRole('button', { name: 'Çıkış Yap' })[0])
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/giris'))
-    expect(requests).toEqual([expect.objectContaining({ method: 'POST', path: '/api/auth/logout' })])
-    expect(requests[0].headers['x-csrf-token']).toBe('session-token')
+    // The dashboard behind it also asked for its figures; the sign-out is the only state-changing request.
+    const posts = requests.filter((request) => request.method !== 'GET')
+    expect(posts).toEqual([expect.objectContaining({ method: 'POST', path: '/api/auth/logout' })])
+    expect(posts[0].headers['x-csrf-token']).toBe('session-token')
     expect(queryClient.getQueryData(['auth', 'currentUser'])).toBeNull()
     expect(await screen.findByRole('button', { name: 'Giriş Yap' })).toBeInTheDocument()
   })

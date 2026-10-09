@@ -1,8 +1,10 @@
 using EnterpriseInventory.Application.Abstractions;
 using EnterpriseInventory.Application.Assets;
 using EnterpriseInventory.Application.Authentication;
+using EnterpriseInventory.Application.Dashboard;
 using EnterpriseInventory.Infrastructure.ActiveDirectory;
 using EnterpriseInventory.Infrastructure.Assets;
+using EnterpriseInventory.Infrastructure.Dashboard;
 using EnterpriseInventory.Infrastructure.Identity;
 using EnterpriseInventory.Infrastructure.Persistence;
 using EnterpriseInventory.Infrastructure.Persistence.Interceptors;
@@ -31,6 +33,7 @@ public static class DependencyInjection
             serviceProvider.GetRequiredService<TimeProvider>()));
         services.AddScoped<IUserSessionService, UserSessionService>();
         services.AddScoped<IAssetStore, AssetStore>();
+        services.AddScoped<IDashboardStore, DashboardStore>();
         services.AddDbContext<ApplicationDbContext>((serviceProvider, options) =>
         {
             var connectionString = configuration.GetConnectionString(ConnectionStringName);

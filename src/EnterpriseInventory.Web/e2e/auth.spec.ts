@@ -1,16 +1,8 @@
 import { expect, test, type BrowserContext, type Page } from '@playwright/test'
+import { member, password, signIn } from './support.ts'
 
-// The fake users and their password come from playwright.config.ts.
-const password = process.env.EI_E2E_PASSWORD ?? ''
-const member = 'e2e.admin'
 const sessionCookie = '__Host-EnterpriseInventory'
 const csrfCookie = '__Host-EnterpriseInventory.Csrf'
-
-async function signIn(page: Page, userName: string, secret: string) {
-  await page.getByLabel('Kullanıcı adı').fill(userName)
-  await page.getByLabel('Parola', { exact: true }).fill(secret)
-  await page.getByRole('button', { name: 'Giriş Yap' }).click()
-}
 
 async function cookieNames(context: BrowserContext) {
   return (await context.cookies()).map((cookie) => cookie.name)

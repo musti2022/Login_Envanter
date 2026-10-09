@@ -19,8 +19,8 @@ export function json(status: number, body?: unknown, headers: Record<string, str
 }
 
 /**
- * Replaces fetch with fake API routes keyed by "METHOD /path". Unlisted routes answer 404. Returns the
- * requests made, in order.
+ * Replaces fetch with fake API routes keyed by "METHOD /path" or "METHOD /path?query" (which wins). Unlisted
+ * routes answer 404. Returns the requests made, in order.
  */
 export function mockApi(routes: Record<string, Reply>) {
   const requests: RecordedRequest[] = []
@@ -36,7 +36,8 @@ export function mockApi(routes: Record<string, Reply>) {
     }
     requests.push(request)
 
-    const reply = routes[`${method} ${path}`]
+    // An exact match first ("GET /api/assets?page=2"), then the path without its query string.
+    const reply = routes[`${method} ${path}`] ?? routes[`${method} ${path.split('?')[0]}`]
     if (!reply) {
       return json(404, { title: 'İstenen kaynak bulunamadı.', status: 404 })
     }
