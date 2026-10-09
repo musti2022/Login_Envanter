@@ -159,7 +159,13 @@ export function AssetForm({ asset, submitLabel, onSubmit, onCancel, onReload }: 
               helperText={statusLocked ? 'Zimmetli demirbaşın durumu iade alınınca değişir.' : undefined}
             />
             <TextFieldController control={control} name="computerName" label="Bilgisayar Adı" maxLength={assetLimits.computerName} />
-            <TextFieldController control={control} name="serialNumber" label="Seri No" maxLength={assetLimits.serialNumber} />
+            <TextFieldController
+              control={control}
+              name="serialNumber"
+              label="Seri No"
+              maxLength={assetLimits.serialNumber}
+              helperText="Boşluklar kaldırılır, harfler büyük harfle kaydedilir."
+            />
           </Section>
           <Section title="Marka ve model">
             <SelectController
@@ -309,7 +315,15 @@ interface ControllerProps {
   required?: boolean
 }
 
-function TextFieldController({ control, name, label, required, maxLength, multiline }: ControllerProps & { maxLength: number; multiline?: boolean }) {
+function TextFieldController({
+  control,
+  name,
+  label,
+  required,
+  maxLength,
+  multiline,
+  helperText,
+}: ControllerProps & { maxLength: number; multiline?: boolean; helperText?: string }) {
   return (
     <Controller
       control={control}
@@ -324,7 +338,7 @@ function TextFieldController({ control, name, label, required, maxLength, multil
           multiline={multiline}
           minRows={multiline ? 3 : undefined}
           error={Boolean(fieldState.error)}
-          helperText={fieldState.error?.message}
+          helperText={fieldState.error?.message ?? helperText}
           slotProps={{ htmlInput: { maxLength } }}
         />
       )}

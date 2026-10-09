@@ -97,6 +97,9 @@ demirbaş da okunur. Olmayan kimlik `404` `asset_not_found` "Demirbaş bulunamad
   zimmet yalnızca zimmet işlemiyle olur.
 - Metinlerin başı ve sonundaki boşluklar silinir; boş metin `null` saklanır. Uzunluklar: kod 50, bilgisayar adı
   64, seri no 100, açıklama 1000 karakter. Kontrol karakteri reddedilir.
+- Seri numarasındaki tüm boşluklar silinir ve harfler büyük harfle saklanır; Türkçe `ı` ve `İ` `I` olur
+  (`" 5cd 1234 xyz "` → `"5CD1234XYZ"`). Uzunluk bu halinden ölçülür. Ayrıntı:
+  [`database.md`](database.md#tasarım).
 - Seçilen model, marka, şehir, departman ve lokasyon var ve aktif olmalıdır; lokasyon seçilen şehirde olmalıdır.
   Aksi durumda `400` ve ilgili alanda Türkçe mesaj, örneğin `errors.modelId`: "Seçilen model pasif; yeni
   seçimlerde kullanılamaz."
@@ -104,7 +107,7 @@ demirbaş da okunur. Olmayan kimlik `404` `asset_not_found` "Demirbaş bulunamad
   fark etmez. Çakışma `409` `duplicate_value` ve `errors.assetCode` / `errors.serialNumber`. Aynı kodla aynı
   anda gelen istekler için de tek kayıt oluşur (benzersiz indeks yakalar). Seri numarası boş olan birden çok
   demirbaş olabilir.
-- Kayıt ve `Created` audit kaydı tek transaction'da yazılır.
+- Kayıt ve `Created` audit kaydı tek transaction'da yazılır; audit yazılamazsa demirbaş da kaydedilmez (`500`).
 
 ## Güncelleme: `PUT /api/assets/{id}`
 
@@ -115,8 +118,9 @@ Gövde, eklemedeki tüm alanlar ve okunan `rowVersion`'dır. Gönderilmeyen iste
   `concurrency_conflict` döner: "Kayıt siz düzenlerken başka bir kullanıcı tarafından değiştirildi." /
   "Değişiklikleriniz kaydedilmedi. Kaydı yeniden açıp güncel bilgiler üzerinde tekrar deneyin." Hiçbir alan
   değişmez, audit yazılmaz. Sürüm kontrolü kaydetme anında veritabanında da tekrarlanır (`UPDATE … WHERE
-  RowVersion = …`); aynı sürüm üzerinde aynı anda gelen düzenlemelerden yalnızca biri kaydedilir, diğerleri
-  `409` alır. Sessiz veri ezme olmaz.
+  RowVersion = …`): istemcinin `rowVersion`'ı EF Core'un `OriginalValue`'su yapılır, böylece okuma ile kaydetme
+  arasında başka bir kullanıcı veya `DbContext` kaydetse de güncelleme `409` alır. Aynı sürüm üzerinde aynı anda
+  gelen düzenlemelerden yalnızca biri kaydedilir, diğerleri `409` alır. Sessiz veri ezme olmaz.
 - `rowVersion` eksik veya 8 baytlık base64 değilse `400` (`errors.rowVersion`).
 - Zimmetli demirbaş düzenlenebilir ve `status` olarak `Assigned` gönderilir; başka bir duruma geçmek için önce
   iade gerekir (`409` `asset_assigned`). Zimmetli olmayan demirbaşa `Assigned` verilemez (`400` `errors.status`).
@@ -132,12 +136,14 @@ Gövde, eklemedeki tüm alanlar ve okunan `rowVersion`'dır. Gönderilmeyen iste
 Demirbaş silinmez, arşivlenir (`IsDeleted = 1`). `rowVersion` sorgu dizgisinde gönderilir ve URL-encode
 edilmelidir (base64'teki `+`, `/`, `=` nedeniyle; örneğin JavaScript'te `encodeURIComponent`).
 
-- Başarılıysa `204`. Demirbaş listeden çıkar (`archived=true` ile görülür), detayı ve geçmişi okunmaya devam eder.
+- Başarılıysa `204`. Demirbaş listeden çıkar (EF Core soft delete sorgu filtresi; `archived=true` ile görülür),
+  detayı ve geçmişi okunmaya devam eder.
 - Kayıt satırı, zimmet geçmişi (iade edilmiş zimmetler) ve audit kayıtları korunur. Kodu ve seri numarası
   rezerve kalır; yeni demirbaşta kullanılamaz.
 - Zimmetli demirbaş arşivlenemez: `409` `asset_assigned` "Önce demirbaşın iadesini alın, sonra tekrar deneyin."
 - Zaten arşivlenmişse `409` `asset_already_archived`; eski sürümse `409` `concurrency_conflict`.
-- Arşiv bayrağı ve `Archived` audit kaydı tek `SaveChanges` (tek transaction) ile yazılır.
+- Arşiv bayrağı ve `Archived` audit kaydı tek `SaveChanges` (tek transaction) ile yazılır; audit yazılamazsa
+  arşivleme de geri alınır.
 
 ## Geçmiş: `GET /api/assets/{id}/history`
 
@@ -192,15 +198,15 @@ Demirbaşın audit kayıtları, en yeni önce. `page`, `pageSize` (varsayılan 5
 
 ## Testler
 
-SQL Server 2022 (Docker, `Turkish_CI_AS`) üzerinde çalıştırıldı; son çalıştırmada birim testleri 326/326 ve
-entegrasyon testleri 344/344 geçti.
+SQL Server 2022 (Docker, `Turkish_CI_AS`) üzerinde çalıştırıldı; son çalıştırmada (20. gün, talimat v1.1 denetimi)
+birim testleri 341/341 ve entegrasyon testleri 417/417 geçti.
 
 | Kabul ölçütü | Testler | Sonuç |
 | --- | --- | --- |
-| **11. gün** Pagination testleri geçer | `AssetListTests`: kod sırası, sayfalar arası boşluk/tekrar yok, son sayfadan sonrası, sınırlar, Türkçe alan hataları, sayı olmayan sayfa, tablo sütunları, detay, `404`, arşivlenmişin listede olmaması | Geçti |
+| **11. gün** EF Core async liste/detay, AsNoTracking ve DTO projection; filtre ve deterministik pagination SQL'de | `AssetListTests`: kod sırası, sayfalar arası boşluk/tekrar yok, son sayfadan sonrası, sınırlar, Türkçe alan hataları, sayı olmayan sayfa, tablo sütunları, detay, `404`, arşivlenmişin listede olmaması. `AssetQueryTests`: 5 ve 25'lik sayfa da 2 SQL komutu (toplam + `OFFSET/FETCH`), sıralama `AssetCode, Id` ile biter, filtre ve arama parametreli `WHERE`, zimmetli detay tek komut | Geçti |
 | **12. gün** Geçerli kayıt oluşur; hatalı reddedilir | `AssetCreateTests`: `201` ve geri okuma, `Faulty`/`Retired` başlangıç, isteğe bağlı alanlar, `Created` audit (kullanıcı, correlation ID), her alan için Türkçe hata, yok/pasif/yanlış şehir tanımları, büyük/küçük harften bağımsız tekrar kod ve seri no, aynı anda 6 istek tek kayıt, CSRF, form gövdesi | Geçti |
-| **13. gün** Çakışmada 409 alınır | `AssetUpdateTests`: güncel sürümle kaydetme ve yeni `rowVersion`, değişiklik türü başına audit, değişiklik yoksa yazma yok, eski sürüm `409` ve diğer kullanıcının verisi korunur, uydurma sürüm `409`, aynı sürümle aynı anda 5 düzenleme tek kayıt, Türkçe alan hataları, pasif tanımı koruma, kod tekrarları, zimmetli ve arşivlenmiş demirbaş, `404`, CSRF | Geçti |
-| **14. gün** Arşivleme geçmişi korur | `AssetArchiveTests`: listeden çıkar ama okunur, geçmiş (`Archived`, `Updated`, `Created`) en yeni önce, zimmet geçmişi korunur, arşivlenmiş düzenlenemez/tekrar arşivlenemez/kodu kullanılamaz, zimmetli arşivlenemez, eski sürüm `409`, aynı anda düzenleme ve arşivlemeden yalnızca biri, `rowVersion` zorunlu, CSRF, geçmiş sayfalama ve hataları, `404` | Geçti |
+| **13. gün** İki ayrı DbContext ile çakışmada 409; veri sessizce ezilmez | `AssetConsistencyTests`: API okuyup kontrol ettikten sonra ikinci bir `DbContext` aynı demirbaşı kaydeder; güncelleme ve arşivleme `409`, ikinci değişiklik korunur, audit yazılmaz, yeniden yükleyip kaydetmek başarılı. `AssetUpdateTests`: güncel sürümle kaydetme ve yeni `rowVersion`, değişiklik türü başına audit, değişiklik yoksa yazma yok, eski sürüm `409` ve diğer kullanıcının verisi korunur, uydurma sürüm `409`, aynı sürümle aynı anda 5 düzenleme tek kayıt, Türkçe alan hataları, pasif tanımı koruma, kod tekrarları, zimmetli ve arşivlenmiş demirbaş, `404`, CSRF | Geçti |
+| **14. gün** Global query filter, soft delete ve atomik audit | `SoftDeleteTests`: arşivlenmiş demirbaş ve zimmetleri normal sorgularda yok, `IncludingArchived` ile var, filtre SQL'de. `AssetConsistencyTests`: audit kaydı SQL Server'da reddedilince ekleme, güncelleme ve arşivleme tamamen geri alınır. `AssetArchiveTests`: listeden çıkar ama okunur, geçmiş (`Archived`, `Updated`, `Created`) en yeni önce, zimmet geçmişi korunur, arşivlenmiş düzenlenemez/tekrar arşivlenemez/kodu kullanılamaz, zimmetli arşivlenemez, eski sürüm `409`, aynı anda düzenleme ve arşivlemeden yalnızca biri, `rowVersion` zorunlu, CSRF, geçmiş sayfalama ve hataları, `404` | Geçti |
 | **15. gün** Filtre testleri geçer | `AssetFilterTests`: sütun bazında arama, çok kelime, Türkçe harf ve aksan duyarsızlığı, `%` `_` `[` sıradan karakter, her filtre ve birleşimleri, arşiv görünümü, filtreli toplamlar, her sütunda sıralama, sıralı sayfalama, Türkçe hata mesajları, tür hataları | Geçti |
 | Yetki | `AssetAuthorizationTests`: altı uç noktanın her biri oturumsuz `401`, Administrator olmayan `403` | Geçti |
 
@@ -214,10 +220,13 @@ Testlerin hatayı gerçekten yakaladığı, kod bilerek bozularak denendi (sonra
 | Arşiv audit kaydı yazılmadı | Geçmiş, tekrar arşivleme ve eşzamanlı arşivleme testleri (3) |
 | Arama `Turkish_CI_AS` ile yapıldı | `canta`, `pc-ist`, `ınsan`, `ISTANBUL` aramaları (4) |
 | Lokasyon aramadan çıkarıldı | `merkez ofis` aramaları (2) |
+| Erken `rowVersion` kontrolü ve `OriginalValue` eşlemesi birlikte kaldırıldı (yalnız erken kontrol kaldırılınca `OriginalValue` tek başına korudu, hiçbir test kırılmadı) | Eski sürüm, uydurma sürüm, aynı anda 5 düzenleme, eski sürümle arşivleme (4) |
+| Ekleme transaction'sız yapıldı | Audit'i başarısız ekleme testi |
+| Soft delete filtresi kaldırıldı | Liste, filtre, sıralama, arşiv, gösterge paneli ve soft delete testleri (20'den fazla) |
+| Sıralamadan `Id` tie-breaker'ı kaldırıldı | Komut sayısı/sıralama testleri (2) |
 
 ## Henüz yapılmayanlar
 
 - Başarılı kayıttan sonra SignalR bildirimi (`AssetCreated`, `AssetUpdated`, `AssetArchived`, `AssetLocationChanged`).
 - Zimmet ve iade uç noktaları; şimdilik testler zimmeti doğrudan veritabanına yazar.
-- Marka, model, şehir, departman ve lokasyon yönetimi uç noktaları.
-- Envanter tablosu ve demirbaş formu ekranları (web arayüzü).
+- Tanımların adını değiştirme ve pasifleştirme uç noktaları (listeleme ve ekleme 18. günde eklendi).

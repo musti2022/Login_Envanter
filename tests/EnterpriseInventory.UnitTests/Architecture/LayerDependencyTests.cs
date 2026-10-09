@@ -38,6 +38,38 @@ public class LayerDependencyTests
         Assert.Empty(csproj.Descendants("PackageReference"));
     }
 
+    /// <summary>
+    /// EF Core tests run on SQL Server: the InMemory and SQLite providers behave differently (no constraints,
+    /// collation, row versions or transactions as SQL Server has them), so no project may use them.
+    /// </summary>
+    [Fact]
+    public void No_project_uses_an_in_memory_or_sqlite_database_provider()
+    {
+        var projects = Directory.GetFiles(FindRepositoryRoot(), "*.csproj", SearchOption.AllDirectories)
+            .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}node_modules{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+            .ToList();
+
+        Assert.NotEmpty(projects);
+        Assert.All(projects, path => Assert.DoesNotContain(
+            XDocument.Load(path).Descendants("PackageReference").Select(e => e.Attribute("Include")!.Value),
+            package => package is "Microsoft.EntityFrameworkCore.InMemory" or "Microsoft.EntityFrameworkCore.Sqlite"));
+    }
+
+    /// <summary>
+    /// The soft-delete filter is turned off only through SoftDelete.IncludingArchived, whose callers are the
+    /// archive and history queries listed in docs/database.md.
+    /// </summary>
+    [Fact]
+    public void Query_filters_are_ignored_only_through_SoftDelete_IncludingArchived()
+    {
+        var sources = Directory.GetFiles(Path.Combine(FindRepositoryRoot(), "src"), "*.cs", SearchOption.AllDirectories)
+            .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+            .Where(path => File.ReadAllText(path).Contains("IgnoreQueryFilters", StringComparison.Ordinal))
+            .Select(Path.GetFileName);
+
+        Assert.Equal(["SoftDelete.cs"], sources);
+    }
+
     private static IEnumerable<string> ReadProjectReferences(string project) =>
         XDocument.Load(CsprojPath(project))
             .Descendants("ProjectReference")

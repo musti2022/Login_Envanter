@@ -14,7 +14,9 @@ EnterpriseInventory.Api             → Application, Infrastructure
 
 - **Domain:** Entity'ler, değer nesneleri ve iş kuralları. Dış bağımlılık yok.
 - **Application:** Kullanım senaryoları, arayüzler (port'lar), FluentValidation doğrulayıcıları.
-- **Infrastructure:** EF Core / SQL Server, Active Directory (LDAPS) ve diğer dış sistem adaptörleri.
+- **Infrastructure:** EF Core / SQL Server, Active Directory (LDAPS) ve diğer dış sistem adaptörleri. EF Core'a
+  yalnızca bu katman bağlıdır; Application'daki veri erişim sözleşmelerini `DbContext`/`DbSet` ile uygular (ayrıntı:
+  [README](../README.md#veritabanı-ef-core)).
 - **Api:** ASP.NET Core Web API, SignalR hub'ları, kimlik doğrulama/yetkilendirme, ProblemDetails, Serilog.
 - **Web:** React + TypeScript + Vite arayüzü. Üretimde Api ile aynı origin altında (`/`, `/api`, `/hubs`) yayınlanır.
 

@@ -113,7 +113,7 @@ namespace EnterpriseInventory.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("ModelId", "BrandId");
 
-                    b.ToTable("Assets", t =>
+                    b.ToTable("Assets", null, t =>
                         {
                             t.HasCheckConstraint("CK_Assets_ArchivedNotAssigned", "NOT ([IsDeleted] = 1 AND [Status] = 2)");
 
@@ -175,7 +175,7 @@ namespace EnterpriseInventory.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("AssetId", "AssignedAt");
 
-                    b.ToTable("AssetAssignments", t =>
+                    b.ToTable("AssetAssignments", null, t =>
                         {
                             t.HasCheckConstraint("CK_AssetAssignments_ReturnAfterAssign", "[ReturnedAt] IS NULL OR [ReturnedAt] >= [AssignedAt]");
 
@@ -231,7 +231,7 @@ namespace EnterpriseInventory.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("EntityName", "EntityId");
 
-                    b.ToTable("AuditLogs", t =>
+                    b.ToTable("AuditLogs", null, t =>
                         {
                             t.HasCheckConstraint("CK_AuditLogs_Action", "[Action] IN (1, 2, 3, 4, 5, 6, 7, 8, 9, 10)");
 
@@ -284,7 +284,7 @@ namespace EnterpriseInventory.Infrastructure.Persistence.Migrations
                     b.HasIndex("BrandId", "Name")
                         .IsUnique();
 
-                    b.ToTable("AssetModels");
+                    b.ToTable("AssetModels", (string)null);
                 });
 
             modelBuilder.Entity("EnterpriseInventory.Domain.Catalog.Brand", b =>
@@ -329,7 +329,7 @@ namespace EnterpriseInventory.Infrastructure.Persistence.Migrations
                     b.HasIndex("Name")
                         .IsUnique();
 
-                    b.ToTable("Brands");
+                    b.ToTable("Brands", (string)null);
                 });
 
             modelBuilder.Entity("EnterpriseInventory.Domain.Employees.Employee", b =>
@@ -401,7 +401,7 @@ namespace EnterpriseInventory.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("SamAccountName");
 
-                    b.ToTable("Employees");
+                    b.ToTable("Employees", (string)null);
                 });
 
             modelBuilder.Entity("EnterpriseInventory.Domain.Organization.City", b =>
@@ -446,7 +446,7 @@ namespace EnterpriseInventory.Infrastructure.Persistence.Migrations
                     b.HasIndex("Name")
                         .IsUnique();
 
-                    b.ToTable("Cities");
+                    b.ToTable("Cities", (string)null);
                 });
 
             modelBuilder.Entity("EnterpriseInventory.Domain.Organization.Department", b =>
@@ -491,7 +491,7 @@ namespace EnterpriseInventory.Infrastructure.Persistence.Migrations
                     b.HasIndex("Name")
                         .IsUnique();
 
-                    b.ToTable("Departments");
+                    b.ToTable("Departments", (string)null);
                 });
 
             modelBuilder.Entity("EnterpriseInventory.Domain.Organization.Location", b =>
@@ -539,7 +539,7 @@ namespace EnterpriseInventory.Infrastructure.Persistence.Migrations
                     b.HasIndex("CityId", "Name")
                         .IsUnique();
 
-                    b.ToTable("Locations");
+                    b.ToTable("Locations", (string)null);
                 });
 
             modelBuilder.Entity("EnterpriseInventory.Domain.Users.AdminUser", b =>
@@ -574,7 +574,7 @@ namespace EnterpriseInventory.Infrastructure.Persistence.Migrations
                     b.HasIndex("ObjectGuid")
                         .IsUnique();
 
-                    b.ToTable("AdminUsers");
+                    b.ToTable("AdminUsers", (string)null);
                 });
 
             modelBuilder.Entity("EnterpriseInventory.Domain.Users.UserSession", b =>
@@ -626,7 +626,7 @@ namespace EnterpriseInventory.Infrastructure.Persistence.Migrations
                     b.HasIndex("KeyHash")
                         .IsUnique();
 
-                    b.ToTable("UserSessions", t =>
+                    b.ToTable("UserSessions", null, t =>
                         {
                             t.HasCheckConstraint("CK_UserSessions_EndReason", "[EndReason] IS NULL OR [EndReason] IN (1, 2, 3, 4, 5, 6)");
 

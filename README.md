@@ -4,8 +4,9 @@
 üzerinden LDAPS ile yapılır ve yalnızca `Bim_Envanter` güvenlik grubunun üyeleri uygulamaya girebilir.
 Proje gereksinimleri ve 40 günlük plan: [`proje_talimatlari.md`](proje_talimatlari.md).
 
-> **Durum:** 20. gün — solution iskeleti, Türkçe arayüz kabuğu, domain modeli, SQL Server şeması (EF Core migration,
-> RowVersion, kısıtlar), API altyapısı (health endpoint'leri, varsayılan olarak kapalı yetkilendirme, hata yanıtları,
+> **Durum:** 20. gün (talimat v1.1'in EF Core kurallarına göre denetlendi) — solution iskeleti, Türkçe arayüz kabuğu,
+> domain modeli, SQL Server şeması (EF Core migration, RowVersion, kısıtlar, soft delete sorgu filtresi, idempotent
+> yayın betiği, yedek ve geri dönüş planı, geliştirme seed'i), API altyapısı (health endpoint'leri, varsayılan olarak kapalı yetkilendirme, hata yanıtları,
 > güvenlik başlıkları, rate limiting), Active Directory LDAPS bağlantısı (sıkı TLS sertifika doğrulaması), giriş API'si
 > (AD parola doğrulaması, `Bim_Envanter` grup SID kontrolü, giriş audit kaydı), oturum güvenliği (sunucu taraflı
 > oturum, CSRF koruması, çıkış, boşta kalma ve mutlak süre, açık oturumların AD'de düzenli yeniden kontrolü, kalıcı
@@ -82,6 +83,54 @@ veritabanı oluşturup silerler; ayrıntı için [`docs/database.md`](docs/datab
 Active Directory testleri `EI_TEST_AD_SERVER` tanımlı değilse atlanır. Gerçek bir LDAPS sunucusuyla denemek için
 Samba ile geçici bir test domain'i kurulabilir: [`scripts/test-ad`](scripts/test-ad/README.md). Ayrıntı:
 [`docs/active-directory.md`](docs/active-directory.md).
+
+## Veritabanı: EF Core
+
+Veri erişimi Entity Framework Core 10.0.12 (Code First, SQL Server provider) ile yapılır. Paket ve araç sürümleri
+sabittir: `Microsoft.EntityFrameworkCore.SqlServer` ve `.Design` 10.0.12
+([`EnterpriseInventory.Infrastructure.csproj`](src/EnterpriseInventory.Infrastructure/EnterpriseInventory.Infrastructure.csproj)),
+`dotnet-ef` 10.0.12 ([`dotnet-tools.json`](dotnet-tools.json)).
+
+**EF bağımlılığı katmanlarda nerede:**
+
+| Katman | EF Core | İçerik |
+| --- | --- | --- |
+| Domain | Yok (paket referansı yok) | Entity'ler ve iş kuralları; `RowVersion` yalnızca `byte[]` |
+| Application | Yok | Veri erişim sözleşmeleri (`IAssetStore`, `ILookupStore`, `IDashboardStore`, `IUserSessionService`) ve DTO'lar; servisler bunları çağırır |
+| Infrastructure | **Tek yer** | `Persistence/ApplicationDbContext`, `Configurations` (Fluent API), `Migrations`, `Seed`, interceptor'lar; sözleşmeleri `DbContext`/`DbSet` ile uygulayan `*Store` sınıfları |
+| Api | Doğrudan kullanmaz | `AddInfrastructure` ile DI'a kaydeder; endpoint'ler Application servislerini çağırır, `DbContext` görmez |
+
+Generic repository veya ikinci bir Unit of Work yoktur: `ApplicationDbContext` (scoped) çalışma birimidir.
+`LayerDependencyTests` Domain ve Application'ın EF'e bağlanmadığını, `ModelConfigurationTests` tablo, anahtar, uzunluk,
+ilişki ve silme davranışlarının açıkça tanımlandığını denetler.
+
+**Komutlar** (depo kökünden; `--startup-project` olarak Infrastructure verilir, çünkü design-time factory oradadır ve
+bağlantıyı `ConnectionStrings__Migrations` değişkeninden okur; Api'ye Design paketi eklenmez):
+
+```bash
+dotnet tool restore
+
+# İlk migration böyle oluşturuldu; model değişince yeni bir adla aynı komut
+dotnet ef migrations add InitialCreate --project src/EnterpriseInventory.Infrastructure \
+  --startup-project src/EnterpriseInventory.Infrastructure --output-dir Persistence/Migrations
+
+# Geliştirme veritabanına uygulama (şema değiştirme yetkili migration hesabıyla)
+export ConnectionStrings__Migrations="<migration hesabının bağlantı dizesi>"
+dotnet ef database update --project src/EnterpriseInventory.Infrastructure \
+  --startup-project src/EnterpriseInventory.Infrastructure
+
+# Yayın betiği (idempotent, Git'te): deploy/sql/migrate-idempotent.sql
+dotnet ef migrations script --idempotent --project src/EnterpriseInventory.Infrastructure \
+  --startup-project src/EnterpriseInventory.Infrastructure -o deploy/sql/migrate-idempotent.sql
+
+# Geliştirme veritabanına örnek tanımlar (yalnızca Development; tekrar çalıştırılabilir)
+ASPNETCORE_ENVIRONMENT=Development dotnet run --project src/EnterpriseInventory.Api -- seed-development-data
+```
+
+Bu dört komut 20. gün denetiminde gerçekten çalıştırıldı (`migrations add InitialCreate` migration klasörü silinmiş bir
+kopyada). Uygulama başlarken migration çalıştırmaz; üretimde betiği DBA onaylı yayın adımında uygular. Yedek ve geri
+dönüş planı: [`deploy/database-rollback.md`](deploy/database-rollback.md); tasarım, kısıtlar ve testler:
+[`docs/database.md`](docs/database.md).
 
 ## Geliştirme ortamında çalıştırma
 

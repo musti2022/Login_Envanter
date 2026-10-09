@@ -110,9 +110,10 @@ public sealed class Asset : AuditableEntity
 
     /// <summary>
     /// The stored form of a serial number: every whitespace character removed and letters upper-cased with
-    /// invariant rules, so "5cd 1234 xyz" and "5CD1234XYZ" are the same number. Invariant rules turn both i and ı
-    /// into I; the unique index's Turkish collation would otherwise treat "abci" and "ABCI" as different numbers.
-    /// Other characters, such as dashes, are kept. Empty input is <c>null</c>, which the unique index ignores.
+    /// invariant rules, so "5cd 1234 xyz" and "5CD1234XYZ" are the same number. The Turkish letters ı and İ, which a
+    /// Turkish keyboard produces for i and I, are stored as I: manufacturers' serial numbers use Latin letters, and
+    /// the unique index's Turkish collation would otherwise treat "ABCI" and "abci" as different numbers. Other
+    /// characters, such as dashes, are kept. Empty input is <c>null</c>, which the unique index ignores.
     /// </summary>
     public static string? NormalizeSerialNumber(string? serialNumber)
     {
@@ -122,7 +123,7 @@ public sealed class Asset : AuditableEntity
         }
 
         var compact = string.Concat(serialNumber.Where(c => !char.IsWhiteSpace(c)));
-        return compact.Length == 0 ? null : compact.ToUpperInvariant();
+        return compact.Length == 0 ? null : compact.ToUpperInvariant().Replace('ı', 'I').Replace('İ', 'I');
     }
 
     /// <summary>Sets the model and, from it, the brand, so the two can never disagree.</summary>

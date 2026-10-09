@@ -42,6 +42,7 @@ describe('adding an asset', () => {
     await choose('Lokasyon', 'Merkez Ofis')
     await choose('Departman', 'Muhasebe')
     await choose('Durum', 'Arızalı')
+    expect(helperTextOf(textbox('Seri No'))).toBe('Boşluklar kaldırılır, harfler büyük harfle kaydedilir.')
     fireEvent.change(textbox('Seri No'), { target: { value: 'SN-42' } })
     fireEvent.click(screen.getByRole('button', { name: 'Demirbaşı ekle' }))
 

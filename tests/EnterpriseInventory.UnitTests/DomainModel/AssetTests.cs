@@ -96,7 +96,7 @@ public class AssetTests
     [InlineData("5cd1234xyz", "5CD1234XYZ")]
     [InlineData(" 5CD 1234\u00A0XYZ ", "5CD1234XYZ")]
     [InlineData("sn-ıi-42", "SN-II-42")]
-    [InlineData("SN-İ-1", "SN-İ-1")]
+    [InlineData("SN-İ-1", "SN-I-1")]
     public void Serial_number_is_stored_without_whitespace_and_in_invariant_upper_case(string typed, string stored)
     {
         var asset = Asset.Create("DMR-1", AssetType.Laptop, NewModel(), NewCity(), NewDepartment(), serialNumber: typed);

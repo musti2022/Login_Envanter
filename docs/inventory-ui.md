@@ -35,6 +35,8 @@ sahte AD). Sunucu tarafı: [`assets-api.md`](assets-api.md), [`lookups-api.md`](
 - `/envanter/yeni` ve `/envanter/{id}/duzenle`. React Hook Form + Zod; sınırlar API ile aynı (kod 50, bilgisayar adı
   64, seri no 100, açıklama 1000 karakter; kontrol karakteri yok). Zorunlular: kod, tür, durum, marka, model, şehir,
   departman.
+- Seri No alanının altında "Boşluklar kaldırılır, harfler büyük harfle kaydedilir." yazar; API seri numarasını böyle
+  saklar ve kayıttan sonra form API'nin döndürdüğü değeri gösterir.
 - Yeni kayıtta yalnızca aktif tanımlar seçilebilir. Düzenlemede demirbaşın mevcut değeri pasif olsa da listede kalır
   ("(pasif)"), çünkü API mevcut değeri korumaya izin verir.
 - Durum: Boşta, Arızalı, Hurda. "Zimmetli" yalnızca zimmet işlemiyle verilir; zimmetli demirbaşın durumu formda

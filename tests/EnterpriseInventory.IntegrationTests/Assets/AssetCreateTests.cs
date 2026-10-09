@@ -234,6 +234,25 @@ public sealed class AssetCreateTests(SqlServerDatabaseFixture fixture) : IAsyncL
     }
 
     [SqlServerFact]
+    public async Task Serial_numbers_are_stored_without_spaces_in_upper_case_so_spacing_and_case_cannot_make_a_duplicate()
+    {
+        using var client = _api!.CreateSignedInClient(User);
+        var serial = $"SN-I{Guid.NewGuid():N}"[..24].ToUpperInvariant();
+        var body = _refs.NewAssetBody();
+        body["serialNumber"] = $" {serial[..6].ToLowerInvariant()} {serial[6..]} ";
+
+        var created = await client.CreateAssetAsync(body);
+
+        Assert.Equal(serial, created.GetProperty("serialNumber").GetString());
+
+        // "i" and "I" differ under the Turkish collation; the normalization makes them one number.
+        var again = _refs.NewAssetBody();
+        again["serialNumber"] = serial.ToLowerInvariant().Insert(4, "\u00A0");
+        using var response = await client.SendWithCsrfAsync(HttpMethod.Post, "/api/assets", again);
+        Assert.Equal(AssetMessages.SerialNumberTaken, (await AssetApi.ReadAsync(response, HttpStatusCode.Conflict)).FieldError("serialNumber"));
+    }
+
+    [SqlServerFact]
     public async Task Simultaneous_creates_with_the_same_code_make_exactly_one_asset()
     {
         var code = PersistenceTestData.Unique("YARIS")[..30];
