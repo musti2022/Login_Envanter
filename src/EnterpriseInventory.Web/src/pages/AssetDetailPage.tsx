@@ -3,6 +3,7 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import AssignmentIndOutlinedIcon from '@mui/icons-material/AssignmentIndOutlined'
 import AssignmentReturnOutlinedIcon from '@mui/icons-material/AssignmentReturnOutlined'
 import EditIcon from '@mui/icons-material/Edit'
+import PlaceOutlinedIcon from '@mui/icons-material/PlaceOutlined'
 import { Alert, Box, Button, Card, CardContent, CardHeader, Chip, Tooltip, Typography } from '@mui/material'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type ReactNode } from 'react'
@@ -21,6 +22,7 @@ import { AssetNotFound } from '../inventory/AssetNotFound'
 import { assetQueryKey, assetsQueryKey, fetchAsset, retryUnlessNotFound, type AssetDetails } from '../inventory/assetsApi'
 import { dashboardQueryKey } from '../dashboard/dashboardApi'
 import { formatDateTime, statusLabels, typeLabels } from '../inventory/labels'
+import { MoveAssetDialog } from '../inventory/MoveAssetDialog'
 import { ReturnAssetDialog } from '../inventory/ReturnAssetDialog'
 import { StatusChip } from '../inventory/StatusChip'
 
@@ -32,6 +34,7 @@ export function AssetDetailPage() {
   const [archiveTarget, setArchiveTarget] = useState<AssetDetails | null>(null)
   const [assignTarget, setAssignTarget] = useState<AssetDetails | null>(null)
   const [returnTarget, setReturnTarget] = useState<AssetDetails | null>(null)
+  const [moveTarget, setMoveTarget] = useState<AssetDetails | null>(null)
   const asset = useQuery({
     queryKey: assetQueryKey(assetId ?? 0),
     queryFn: ({ signal }) => fetchAsset(assetId!, signal),
@@ -155,7 +158,16 @@ export function AssetDetailPage() {
           </Field>
         </Section>
         <Box sx={{ display: 'grid', gap: 2, alignContent: 'start' }}>
-          <Section title="Konum">
+          <Section
+            title="Konum"
+            action={
+              !data.isArchived && (
+                <Button size="small" startIcon={<PlaceOutlinedIcon />} onClick={() => setMoveTarget(data)}>
+                  Konum Değiştir
+                </Button>
+              )
+            }
+          >
             <Field label="Şehir">{data.city.name}</Field>
             <Field label="Lokasyon">{data.location?.name}</Field>
             <Field label="Departman">{data.department.name}</Field>
@@ -208,6 +220,15 @@ export function AssetDetailPage() {
         }}
         onConflict={refresh}
       />
+      <MoveAssetDialog
+        asset={moveTarget}
+        onClose={() => setMoveTarget(null)}
+        onMoved={(asset) => {
+          setMoveTarget(null)
+          saved(asset, `${asset.assetCode} konumu değiştirildi.`)
+        }}
+        onConflict={refresh}
+      />
       <ReturnAssetDialog
         asset={returnTarget}
         onClose={() => setReturnTarget(null)}
@@ -231,10 +252,10 @@ export function AssetDetailPage() {
   )
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+function Section({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) {
   return (
     <Card>
-      <CardHeader title={title} slotProps={{ title: { variant: 'h6', component: 'h2' } }} />
+      <CardHeader title={title} action={action || undefined} slotProps={{ title: { variant: 'h6', component: 'h2' } }} />
       <CardContent sx={{ pt: 0 }}>
         <Box component="dl" sx={{ m: 0, display: 'grid', gap: 2, gridTemplateColumns: { xs: 'minmax(0, 1fr)', sm: 'repeat(2, minmax(0, 1fr))' } }}>
           {children}

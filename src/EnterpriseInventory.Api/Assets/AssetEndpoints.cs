@@ -29,6 +29,11 @@ internal static class AssetEndpoints
             .Accepts<UpdateAssetRequest>("application/json")
             .WithMetadata(new RequestSizeLimitAttribute(MaxBodyBytes));
 
+        // Moves the asset (city, department, location) without a full edit; recorded as a location change.
+        assets.MapPut("/{id:int}/location", ChangeLocationAsync)
+            .Accepts<ChangeAssetLocationRequest>("application/json")
+            .WithMetadata(new RequestSizeLimitAttribute(MaxBodyBytes));
+
         // Archives: the asset is soft-deleted and keeps its history (see IAssetStore.ArchiveAsync).
         assets.MapDelete("/{id:int}", ArchiveAsync);
         assets.MapGet("/{id:int}/history", HistoryAsync);
@@ -65,6 +70,12 @@ internal static class AssetEndpoints
     private static async Task<IResult> UpdateAsync(int id, UpdateAssetRequest body, AssetService assets, CancellationToken cancellationToken)
     {
         var result = await assets.UpdateAsync(id, body, cancellationToken);
+        return result is { Outcome: AssetWriteOutcome.Succeeded, Asset: { } asset } ? TypedResults.Ok(asset) : Failure(result);
+    }
+
+    private static async Task<IResult> ChangeLocationAsync(int id, ChangeAssetLocationRequest body, AssetService assets, CancellationToken cancellationToken)
+    {
+        var result = await assets.ChangeLocationAsync(id, body, cancellationToken);
         return result is { Outcome: AssetWriteOutcome.Succeeded, Asset: { } asset } ? TypedResults.Ok(asset) : Failure(result);
     }
 

@@ -20,7 +20,7 @@ namespace EnterpriseInventory.IntegrationTests.Assets;
 /// about to save, then released together: exactly one assignment (or return) is committed.</item>
 /// <item>An active assignment written behind the API's back between its read and its save: the filtered unique index
 /// refuses the API's assignment.</item>
-/// <item>The audit record cannot be written: the assignment or return is rolled back with it.</item>
+/// <item>The audit record cannot be written: the assignment, return or move is rolled back with it.</item>
 /// </list>
 /// </summary>
 [Collection(SqlServerTestGroup.Name)]
@@ -194,6 +194,29 @@ public sealed class AssignmentConsistencyTests(SqlServerDatabaseFixture fixture)
         Assert.Equal(_people.First, current.GetProperty("activeAssignment").GetProperty("userName").GetString());
         await using var db = fixture.CreateContextFor(_connectionString);
         Assert.Null((await db.AssetAssignments.SingleAsync(x => x.AssetId == assigned.Id())).ReturnedAt);
+    }
+
+    [SqlServerFact]
+    public async Task A_move_whose_audit_record_fails_leaves_the_asset_where_it_was()
+    {
+        using var owner = _api!.CreateSignedInClient(User);
+        var asset = await owner.CreateAssetAsync(_refs.NewAssetBody());
+        using var client = _api.CreateSignedInClient(AuditFailsUser);
+
+        using var response = await client.PutLocationAsync(asset.Id(), new Dictionary<string, object?>
+        {
+            ["cityId"] = _refs.SecondCityId,
+            ["departmentId"] = _refs.SecondDepartmentId,
+            ["locationId"] = null,
+            ["rowVersion"] = asset.GetProperty("rowVersion").GetString(),
+        });
+
+        Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
+        var current = await owner.GetOkAsync($"/api/assets/{asset.Id()}");
+        Assert.Equal(_refs.CityId, current.GetProperty("city").GetProperty("id").GetInt32());
+        Assert.Equal(asset.GetProperty("rowVersion").GetString(), current.GetProperty("rowVersion").GetString());
+        await using var db = fixture.CreateContextFor(_connectionString);
+        Assert.Equal([AuditAction.Created], await AuditActionsAsync(db, asset.Id()));
     }
 
     private static async Task<List<AuditAction>> AuditActionsAsync(ApplicationDbContext db, int assetId)

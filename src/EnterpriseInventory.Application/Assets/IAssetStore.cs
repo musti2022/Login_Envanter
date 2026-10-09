@@ -27,6 +27,14 @@ public interface IAssetStore
     Task<AssetWriteResult> UpdateAsync(int id, AssetDraft draft, byte[] rowVersion, CancellationToken cancellationToken);
 
     /// <summary>
+    /// Moves the asset (city, department, location) with one <c>LocationChanged</c> audit record, in one
+    /// transaction; an assigned asset keeps its holder. Missing lookups, newly chosen inactive ones and a location
+    /// outside the city are refused with field errors; same version check as <see cref="UpdateAsync"/>. Nothing to
+    /// change, nothing written.
+    /// </summary>
+    Task<AssetWriteResult> ChangeLocationAsync(int id, AssetPlacement placement, byte[] rowVersion, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Archives (soft-deletes) the asset with an <c>Archived</c> audit record. The row, its assignment history and
     /// its audit records stay; the asset leaves the inventory list but can still be read. Same version check as
     /// <see cref="UpdateAsync"/>.

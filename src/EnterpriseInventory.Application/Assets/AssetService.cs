@@ -15,6 +15,7 @@ public sealed class AssetService(
     IValidator<UpdateAssetRequest> updateValidator,
     IValidator<ArchiveAssetRequest> archiveValidator,
     IValidator<AssetHistoryRequest> historyValidator,
+    IValidator<ChangeAssetLocationRequest> locationValidator,
     IAssetStore store)
 {
     public async Task<AssetListResult> ListAsync(AssetListRequest request, CancellationToken cancellationToken)
@@ -49,6 +50,21 @@ public sealed class AssetService(
         var validation = await updateValidator.ValidateAsync(request, cancellationToken).ConfigureAwait(false);
         return validation.IsValid
             ? await store.UpdateAsync(id, AssetDraft.From(request), AssetRowVersion.Decode(request.RowVersion), cancellationToken).ConfigureAwait(false)
+            : AssetWriteResult.Invalid(validation.ToDictionary());
+    }
+
+    public async Task<AssetWriteResult> ChangeLocationAsync(int id, ChangeAssetLocationRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var validation = await locationValidator.ValidateAsync(request, cancellationToken).ConfigureAwait(false);
+        return validation.IsValid
+            ? await store.ChangeLocationAsync(
+                    id,
+                    new AssetPlacement(request.CityId!.Value, request.DepartmentId!.Value, request.LocationId),
+                    AssetRowVersion.Decode(request.RowVersion),
+                    cancellationToken)
+                .ConfigureAwait(false)
             : AssetWriteResult.Invalid(validation.ToDictionary());
     }
 

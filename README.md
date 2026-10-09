@@ -4,7 +4,7 @@
 üzerinden LDAPS ile yapılır ve yalnızca `Bim_Envanter` güvenlik grubunun üyeleri uygulamaya girebilir.
 Proje gereksinimleri ve 40 günlük plan: [`proje_talimatlari.md`](proje_talimatlari.md).
 
-> **Durum:** 24. gün — solution iskeleti, Türkçe arayüz kabuğu,
+> **Durum:** 25. gün — solution iskeleti, Türkçe arayüz kabuğu,
 > domain modeli, SQL Server şeması (EF Core migration, RowVersion, kısıtlar, soft delete sorgu filtresi, idempotent
 > yayın betiği, yedek ve geri dönüş planı, geliştirme seed'i), API altyapısı (health endpoint'leri, varsayılan olarak kapalı yetkilendirme, hata yanıtları,
 > güvenlik başlıkları, rate limiting), Active Directory LDAPS bağlantısı (sıkı TLS sertifika doğrulaması), giriş API'si
@@ -15,7 +15,8 @@ Proje gereksinimleri ve 40 günlük plan: [`proje_talimatlari.md`](proje_talimat
 > geçmişi), tanım listeleri API'si (marka, model, şehir, lokasyon, departman) ve envanter ekranları (gösterge paneli,
 > tablo, arama ve filtreler, ekleme/düzenleme formu, detay, geçmiş, arşivleme, telefon görünümü), AD'de çalışan
 > araması, zimmet API'si (tek transaction'da zimmet verme ve iade, filtreli benzersiz indeksle tek aktif zimmet,
-> zimmet geçmişi) ve detay sayfasında zimmet ver/iade al ekranları. AD entegrasyonu Samba test domain'i ile test
+> zimmet geçmişi), detay sayfasında zimmet ver/iade al ve konum değiştirme (doğrulamalı, RowVersion ve audit ile)
+> ekranları. AD entegrasyonu Samba test domain'i ile test
 > edildi; şirketin gerçek AD'si ile henüz denenmedi. Tanım yönetimi (ad değiştirme, pasifleştirme) ve SignalR henüz
 > yok.
 

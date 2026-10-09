@@ -183,6 +183,18 @@ export function updateAsset(id: number, body: SaveAssetBody, rowVersion: string)
   return apiFetch<AssetDetails>(`/api/assets/${id}`, { method: 'PUT', body: { ...body, rowVersion } })
 }
 
+/** Body of PUT /api/assets/{id}/location: where the asset is now and which department it belongs to. */
+export interface MoveAssetBody {
+  cityId: number
+  departmentId: number
+  locationId: number | null
+}
+
+/** Moves the asset; nothing else of it changes. Refused with 409 when someone changed it since rowVersion was read. */
+export function moveAsset(id: number, body: MoveAssetBody, rowVersion: string) {
+  return apiFetch<AssetDetails>(`/api/assets/${id}/location`, { method: 'PUT', body: { ...body, rowVersion } })
+}
+
 /** Archives (soft-deletes) the asset; refused with 409 when someone changed it since rowVersion was read. */
 export function archiveAsset(id: number, rowVersion: string) {
   return apiFetch<void>(`/api/assets/${id}?rowVersion=${encodeURIComponent(rowVersion)}`, { method: 'DELETE' })

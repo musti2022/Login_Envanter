@@ -388,6 +388,74 @@ internal sealed partial class AssetStore(
         return AssetWriteResult.Succeeded(await FindAsync(id, cancellationToken).ConfigureAwait(false));
     }
 
+    public async Task<AssetWriteResult> ChangeLocationAsync(int id, AssetPlacement placement, byte[] rowVersion, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(placement);
+        ArgumentNullException.ThrowIfNull(rowVersion);
+
+        var asset = await LoadForChangeAsync(id, cancellationToken).ConfigureAwait(false);
+        if (asset is null)
+        {
+            return AssetWriteResult.NotFound;
+        }
+
+        if (!db.MatchesClientVersion(asset, rowVersion))
+        {
+            LogConflict(id);
+            return AssetWriteResult.Conflict;
+        }
+
+        if (asset.IsDeleted)
+        {
+            return AssetWriteResult.Rule(DomainErrors.Asset.Archived);
+        }
+
+        var errors = new Dictionary<string, string[]>();
+        var place = await LoadPlacementAsync(placement.CityId, placement.DepartmentId, placement.LocationId, asset, errors, cancellationToken)
+            .ConfigureAwait(false);
+        if (errors.Count > 0)
+        {
+            return AssetWriteResult.Invalid(errors);
+        }
+
+        var before = AssetAuditTrail.Snapshot(asset);
+        try
+        {
+            asset.ChangeLocation(place.City, place.Department, place.Location);
+        }
+        catch (DomainException ex)
+        {
+            db.ChangeTracker.Clear();
+            return AssetWriteResult.Rule(ex.Code);
+        }
+
+        var changes = AssetAuditTrail.Changes(before, AssetAuditTrail.Snapshot(asset)).ToList();
+        if (changes.Count == 0)
+        {
+            return AssetWriteResult.Succeeded(await FindAsync(id, cancellationToken).ConfigureAwait(false));
+        }
+
+        foreach (var (action, oldValues, newValues) in changes)
+        {
+            Audit(asset, action, oldValues, newValues);
+        }
+
+        try
+        {
+            // One SaveChanges: the move and its audit record are committed together or not at all.
+            await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            db.ChangeTracker.Clear();
+            LogConflict(id);
+            return AssetWriteResult.Conflict;
+        }
+
+        LogMoved(id);
+        return AssetWriteResult.Succeeded(await FindAsync(id, cancellationToken).ConfigureAwait(false));
+    }
+
     public async Task<AssetWriteResult> ArchiveAsync(int id, byte[] rowVersion, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(rowVersion);
@@ -499,45 +567,57 @@ internal sealed partial class AssetStore(
             errors[nameof(AssetDraft.ModelId)] = [AssetMessages.BrandInactive];
         }
 
-        var city = await db.Cities.SingleOrDefaultAsync(c => c.Id == draft.CityId, cancellationToken).ConfigureAwait(false);
+        var place = await LoadPlacementAsync(draft.CityId, draft.DepartmentId, draft.LocationId, current, errors, cancellationToken).ConfigureAwait(false);
+        return (new References(model!, place.City, place.Department, place.Location), errors);
+    }
+
+    /// <summary>
+    /// Loads where an asset is to be: the city, the department and the optional location, which must be in that
+    /// city. Problems are added to <paramref name="errors"/> under the request's field names; then the returned
+    /// values are not to be used. A value the asset already has may be inactive; a newly chosen one may not.
+    /// </summary>
+    private async Task<Placement> LoadPlacementAsync(
+        int cityId, int departmentId, int? locationId, Asset? current, Dictionary<string, string[]> errors, CancellationToken cancellationToken)
+    {
+        var city = await db.Cities.SingleOrDefaultAsync(c => c.Id == cityId, cancellationToken).ConfigureAwait(false);
         if (city is null)
         {
-            errors[nameof(AssetDraft.CityId)] = [AssetMessages.CityNotFound];
+            errors[nameof(AssetPlacement.CityId)] = [AssetMessages.CityNotFound];
         }
-        else if (current?.CityId != draft.CityId && !city.IsActive)
+        else if (current?.CityId != cityId && !city.IsActive)
         {
-            errors[nameof(AssetDraft.CityId)] = [AssetMessages.CityInactive];
+            errors[nameof(AssetPlacement.CityId)] = [AssetMessages.CityInactive];
         }
 
-        var department = await db.Departments.SingleOrDefaultAsync(d => d.Id == draft.DepartmentId, cancellationToken).ConfigureAwait(false);
+        var department = await db.Departments.SingleOrDefaultAsync(d => d.Id == departmentId, cancellationToken).ConfigureAwait(false);
         if (department is null)
         {
-            errors[nameof(AssetDraft.DepartmentId)] = [AssetMessages.DepartmentNotFound];
+            errors[nameof(AssetPlacement.DepartmentId)] = [AssetMessages.DepartmentNotFound];
         }
-        else if (current?.DepartmentId != draft.DepartmentId && !department.IsActive)
+        else if (current?.DepartmentId != departmentId && !department.IsActive)
         {
-            errors[nameof(AssetDraft.DepartmentId)] = [AssetMessages.DepartmentInactive];
+            errors[nameof(AssetPlacement.DepartmentId)] = [AssetMessages.DepartmentInactive];
         }
 
         Location? location = null;
-        if (draft.LocationId is { } locationId)
+        if (locationId is { } id)
         {
-            location = await db.Locations.SingleOrDefaultAsync(l => l.Id == locationId, cancellationToken).ConfigureAwait(false);
+            location = await db.Locations.SingleOrDefaultAsync(l => l.Id == id, cancellationToken).ConfigureAwait(false);
             if (location is null)
             {
-                errors[nameof(AssetDraft.LocationId)] = [AssetMessages.LocationNotFound];
+                errors[nameof(AssetPlacement.LocationId)] = [AssetMessages.LocationNotFound];
             }
-            else if (location.CityId != draft.CityId)
+            else if (location.CityId != cityId)
             {
-                errors[nameof(AssetDraft.LocationId)] = [AssetMessages.LocationInAnotherCity];
+                errors[nameof(AssetPlacement.LocationId)] = [AssetMessages.LocationInAnotherCity];
             }
-            else if (current?.LocationId != locationId && !location.IsActive)
+            else if (current?.LocationId != id && !location.IsActive)
             {
-                errors[nameof(AssetDraft.LocationId)] = [AssetMessages.LocationInactive];
+                errors[nameof(AssetPlacement.LocationId)] = [AssetMessages.LocationInactive];
             }
         }
 
-        return (new References(model!, city!, department!, location), errors);
+        return new Placement(city!, department!, location);
     }
 
     /// <summary>Asset codes and serial numbers are unique across all assets, archived ones included.</summary>
@@ -588,6 +668,9 @@ internal sealed partial class AssetStore(
     [LoggerMessage(Level = LogLevel.Information, Message = "Asset {AssetId} ({AssetCode}) archived")]
     private partial void LogArchived(int assetId, string assetCode);
 
+    [LoggerMessage(Level = LogLevel.Information, Message = "Asset {AssetId} moved")]
+    private partial void LogMoved(int assetId);
+
     [LoggerMessage(Level = LogLevel.Information, Message = "Asset {AssetId} updated ({AuditActions})")]
     private partial void LogUpdated(int assetId, string auditActions);
 
@@ -595,4 +678,6 @@ internal sealed partial class AssetStore(
     private partial void LogConflict(int assetId);
 
     private sealed record References(AssetModel Model, City City, Department Department, Location? Location);
+
+    private sealed record Placement(City City, Department Department, Location? Location);
 }

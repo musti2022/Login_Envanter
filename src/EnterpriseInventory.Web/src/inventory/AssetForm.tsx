@@ -17,9 +17,9 @@ import {
   type AssetFormInput,
   type AssetFormValues,
 } from './assetForm'
-import type { AssetDetails, NamedReference, SaveAssetBody } from './assetsApi'
+import type { AssetDetails, SaveAssetBody } from './assetsApi'
 import { assetTypes, statusLabels, typeLabels, type AssetStatus } from './labels'
-import { brandsQuery, citiesQuery, departmentsQuery, locationsQuery, lookupLabel, modelsQuery, type LookupItem } from './lookupsApi'
+import { brandsQuery, citiesQuery, departmentsQuery, locationsQuery, lookupChoices as choices, modelsQuery, type LookupItem, type LookupOption as Option } from './lookupsApi'
 
 interface AssetFormProps {
   /** The asset as it was when editing began; left out when adding. */
@@ -37,11 +37,6 @@ interface Failure {
   detail?: string
   correlationId?: string
   conflict?: boolean
-}
-
-interface Option {
-  value: string
-  label: string
 }
 
 /** Statuses a user may choose; "Zimmetli" is only reached by assigning the asset. */
@@ -246,17 +241,6 @@ export function AssetForm({ asset, submitLabel, onSubmit, onCancel, onReload }: 
       <AddLookupDialog lookup={newLookup?.lookup ?? null} onClose={() => setNewLookup(null)} onAdded={added} />
     </Box>
   )
-}
-
-/** Active values, plus the asset's current one (also while the list is loading, so the select can show it). */
-function choices(items: LookupItem[] | undefined, current: NamedReference | undefined): Option[] {
-  const options = (items ?? [])
-    .filter((item) => item.isActive || item.id === current?.id)
-    .map((item) => ({ value: String(item.id), label: lookupLabel(item) }))
-  if (current && !options.some((option) => option.value === String(current.id))) {
-    options.unshift({ value: String(current.id), label: current.name })
-  }
-  return options
 }
 
 /**

@@ -17,6 +17,7 @@ public sealed class AssetAuthorizationTests
         { "GET", "/api/assets/1/assignments" },
         { "POST", "/api/assets/1/assignments" },
         { "POST", "/api/assets/1/returns" },
+        { "PUT", "/api/assets/1/location" },
         { "GET", "/api/employees/search?q=mehmet" },
     };
 

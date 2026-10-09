@@ -1,4 +1,4 @@
-# Demirbaş API'si (11–15. gün)
+# Demirbaş API'si (11–15. ve 25. gün)
 
 Kod: `src/EnterpriseInventory.Api/Assets`, `src/EnterpriseInventory.Application/Assets`,
 `src/EnterpriseInventory.Infrastructure/Assets`. Testler: `tests/EnterpriseInventory.IntegrationTests/Assets` ve
@@ -23,6 +23,7 @@ Kod: `src/EnterpriseInventory.Api/Assets`, `src/EnterpriseInventory.Application/
 | `GET /api/assets/{id}` | Detay (arşivlenmiş dahil) | `200` |
 | `POST /api/assets` | Ekleme | `201`, `Location: /api/assets/{id}` ve detay |
 | `PUT /api/assets/{id}` | Güncelleme (RowVersion ile) | `200` güncel detay |
+| `PUT /api/assets/{id}/location` | Konum değiştirme: şehir, departman, lokasyon (RowVersion ile) | `200` güncel detay |
 | `DELETE /api/assets/{id}?rowVersion=…` | Arşivleme (soft delete) | `204` |
 | `GET /api/assets/{id}/history` | Audit geçmişi | `200` sayfa |
 | `GET`/`POST /api/assets/{id}/assignments`, `POST /api/assets/{id}/returns` | Zimmet geçmişi, zimmet verme, iade alma | bkz. [`assignments-api.md`](assignments-api.md) |
@@ -132,6 +133,29 @@ Gövde, eklemedeki tüm alanlar ve okunan `rowVersion`'dır. Gönderilmeyen iste
 - Hiçbir şey değişmiyorsa kayıt yazılmaz: `rowVersion` aynı kalır, audit oluşmaz.
 - Yanıt, yeni `rowVersion` ile güncel detaydır.
 
+## Konum değiştirme: `PUT /api/assets/{id}/location` (25. gün)
+
+Demirbaşın yalnızca yerini (şehir, lokasyon) ve bağlı olduğu departmanı değiştirir; diğer alanları göndermek
+gerekmez ve değişmez.
+
+```json
+{ "cityId": 6, "departmentId": 8, "locationId": 60, "rowVersion": "AAAAAAAAB9E=" }
+```
+
+- Zorunlu: `cityId`, `departmentId`, `rowVersion`. `locationId` isteğe bağlıdır; verilirse seçilen şehrin
+  lokasyonu olmalıdır, `null` lokasyonu boşaltır.
+- Tanım yoksa, yeni seçilen tanım pasifse veya lokasyon başka şehirdeyse `400` ve alanın altında Türkçe mesaj
+  ("Seçilen lokasyon seçilen şehirde değil." gibi). Demirbaşın zaten taşıdığı, sonradan pasif yapılmış bir tanım
+  korunabilir.
+- `rowVersion` güncel değilse `409` `concurrency_conflict` ve hiçbir şey değişmez; arşivlenmiş demirbaş `409`
+  `asset_archived`; demirbaş yoksa `404`.
+- Zimmetli demirbaş da taşınabilir; zimmeti ve durumu değişmez.
+- Değişiklik ve tek `LocationChanged` audit kaydı (eski ve yeni şehir, departman, lokasyon; kimlik ve adıyla)
+  tek `SaveChanges` ile yazılır; audit yazılamazsa taşıma da geri alınır. Demirbaş zaten oradaysa hiçbir şey
+  yazılmaz, `rowVersion` aynı kalır.
+- Aynı kurallar (`PUT /api/assets/{id}` içindeki şehir/departman/lokasyon denetimi) tek bir yerde
+  (`AssetStore.LoadPlacementAsync`) uygulanır.
+
 ## Arşivleme: `DELETE /api/assets/{id}?rowVersion=…`
 
 Demirbaş silinmez, arşivlenir (`IsDeleted = 1`). `rowVersion` sorgu dizgisinde gönderilir ve URL-encode
@@ -169,7 +193,7 @@ Demirbaşın audit kayıtları, en yeni önce. `page`, `pageSize` (varsayılan 5
 | --- | --- | --- |
 | Ekleme | `Created` | — / tüm alanlar |
 | Kod, tür, bilgisayar adı, seri no, açıklama, marka/model değişikliği | `Updated` | Yalnızca değişen alanlar |
-| Şehir, departman veya lokasyon değişikliği | `LocationChanged` | Yalnızca değişen alanlar |
+| Şehir, departman veya lokasyon değişikliği (düzenleme veya konum değiştirme) | `LocationChanged` | Yalnızca değişen alanlar |
 | Durum değişikliği | `StatusChanged` | `status` |
 | Arşivleme | `Archived` | `isArchived` |
 | Zimmet, iade | `Assigned`, `Returned` | bkz. [`assignments-api.md`](assignments-api.md#audit-kayıtları) |
@@ -210,7 +234,8 @@ birim testleri 341/341 ve entegrasyon testleri 417/417 geçti.
 | **13. gün** İki ayrı DbContext ile çakışmada 409; veri sessizce ezilmez | `AssetConsistencyTests`: API okuyup kontrol ettikten sonra ikinci bir `DbContext` aynı demirbaşı kaydeder; güncelleme ve arşivleme `409`, ikinci değişiklik korunur, audit yazılmaz, yeniden yükleyip kaydetmek başarılı. `AssetUpdateTests`: güncel sürümle kaydetme ve yeni `rowVersion`, değişiklik türü başına audit, değişiklik yoksa yazma yok, eski sürüm `409` ve diğer kullanıcının verisi korunur, uydurma sürüm `409`, aynı sürümle aynı anda 5 düzenleme tek kayıt, Türkçe alan hataları, pasif tanımı koruma, kod tekrarları, zimmetli ve arşivlenmiş demirbaş, `404`, CSRF | Geçti |
 | **14. gün** Global query filter, soft delete ve atomik audit | `SoftDeleteTests`: arşivlenmiş demirbaş ve zimmetleri normal sorgularda yok, `IncludingArchived` ile var, filtre SQL'de. `AssetConsistencyTests`: audit kaydı SQL Server'da reddedilince ekleme, güncelleme ve arşivleme tamamen geri alınır. `AssetArchiveTests`: listeden çıkar ama okunur, geçmiş (`Archived`, `Updated`, `Created`) en yeni önce, zimmet geçmişi korunur, arşivlenmiş düzenlenemez/tekrar arşivlenemez/kodu kullanılamaz, zimmetli arşivlenemez, eski sürüm `409`, aynı anda düzenleme ve arşivlemeden yalnızca biri, `rowVersion` zorunlu, CSRF, geçmiş sayfalama ve hataları, `404` | Geçti |
 | **15. gün** Filtre testleri geçer | `AssetFilterTests`: sütun bazında arama, çok kelime, Türkçe harf ve aksan duyarsızlığı, `%` `_` `[` sıradan karakter, her filtre ve birleşimleri, arşiv görünümü, filtreli toplamlar, her sütunda sıralama, sıralı sayfalama, Türkçe hata mesajları, tür hataları | Geçti |
-| Yetki | `AssetAuthorizationTests`: altı uç noktanın her biri oturumsuz `401`, Administrator olmayan `403` | Geçti |
+| **25. gün** Konum değişiklikleri doğrulanır | `AssetLocationTests`: başka şehir, departman ve lokasyona taşıma (`200`, yeni `rowVersion`, diğer alanlar aynı, tek `LocationChanged` kaydı ve yalnızca konum alanları, listede yeni şehir filtresiyle görünme); zimmetli demirbaş zimmetiyle taşınır; on iki hatalı istek için alanın altında Türkçe mesaj ve hiçbir şeyin yazılmaması (eksik/geçersiz/olmayan şehir, departman, lokasyon; başka şehrin lokasyonu; pasif şehir, departman, lokasyon; eksik `rowVersion`); sonradan pasif yapılan mevcut departman korunur; eski sürümle taşıma `409` ve ilk taşıma korunur; aynı yere taşıma yazmaz; arşivlenmiş `409`, olmayan `404`. `AssignmentConsistencyTests`: audit yazılamayınca taşıma geri alınır. Birim: `ChangeAssetLocationRequestTests` | Geçti |
+| Yetki | `AssetAuthorizationTests`: her uç nokta oturumsuz `401`, Administrator olmayan `403` | Geçti |
 
 Testlerin hatayı gerçekten yakaladığı, kod bilerek bozularak denendi (sonra geri alındı):
 

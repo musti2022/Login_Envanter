@@ -1,4 +1,4 @@
-# Envanter ekranları (16–20. ve 24. gün)
+# Envanter ekranları (16–20., 24. ve 25. gün)
 
 Kod: `src/EnterpriseInventory.Web/src/pages` (`DashboardPage`, `InventoryPage`, `AssetCreatePage`, `AssetEditPage`,
 `AssetDetailPage`) ve `src/EnterpriseInventory.Web/src/inventory`. Testler: aynı klasörlerdeki `*.test.ts(x)`
@@ -84,6 +84,18 @@ Detay sayfasında, arşivlenmemiş demirbaşta:
   zimmet ve iade kayıtları kişi adı, kullanıcı adı, tanım ve tarihlerle Türkçe gösterilir; AD GUID'i ve iç
   kimlikler gösterilmez.
 
+## Konum değiştirme (25. gün)
+
+- Detay sayfasındaki "Konum" kartında **Konum Değiştir** (arşivlenmiş demirbaşta yok). Pencere demirbaşın şu anki
+  şehir, lokasyon ve departmanıyla açılır; hiçbir şey değişmeden "Konumu Kaydet" kapalıdır.
+- Listeler aktif tanımları sunar; demirbaşın zaten taşıdığı, sonradan pasif yapılmış değer "(pasif)" etiketiyle
+  seçili kalır. Lokasyon yalnızca seçilen şehrin lokasyonlarından seçilir; şehir değişince lokasyon boşalır.
+- `PUT /api/assets/{id}/location` ekranda gösterilen sürümün `rowVersion`'ı ile gönderilir. Sunucunun alan
+  hatası (ör. pasif departman) alanın altında, çakışma uyarısı pencerede gösterilir; çakışmada sayfa güncel
+  kaydı gösterir ve gönderim kapanır. Başarılıysa "DMR-0001 konumu değiştirildi." ve geçmişte "Konumu değişti:
+  Şehir: İzmir → Bursa" kaydı görünür.
+- Tam düzenleme formu da şehir/lokasyon/departmanı değiştirebilir; iki yol da aynı sunucu kurallarından geçer.
+
 ## Test sonuçları
 
 | Kapsam | Araç | Sonuç |
@@ -93,6 +105,8 @@ Detay sayfasında, arşivlenmemiş demirbaşta:
 | Tüm .NET testleri | xUnit | 326 birim + 394 entegrasyon geçti |
 | Tarayıcı testleri: giriş/çıkış, panel = API, filtre/arama/sıralama/sayfalama = API, arşiv listesi, formdan ekleme, aynı kod, eski sürümle düzenleme reddi ve yeniden yapma, formdan tanım ekleme, 390 px telefon görünümü, bulunamadı sayfaları | Playwright (Chromium) | 19/19 geçti (20. gün) |
 | **24. gün** Zimmet ver/iade et (Vitest): AD araması ve seçim, gövde ve CSRF, kırpılmış tanım, zimmetli kişi ve geçmiş; boş alan hataları; 2 harften önce arama yok; dizine ulaşılamıyor; pasif hesap sonrası yeniden seçim; çakışmada uyarı ve yenileme; arızalıda kapalı düğme; onaylı iade ve geçmişte kalan dönem; iade çakışması; audit'te zimmet/iade alanları | Vitest | 100/100 geçti (tüm web testleri) |
+| **25. gün** Konum değiştirme (Vitest): mevcut değerlerle açılış, değişiklik yokken kapalı kaydet, pasif lokasyonun yeni seçim olarak sunulmaması, şehir değişince lokasyonun boşalması, gövde ve CSRF, sunucu alan hatası, çakışmada uyarı ve yenileme, sonradan pasif yapılan mevcut değerin korunması, arşivlenmişte düğme yok | Vitest | 105/105 geçti (tüm web testleri) |
+| **25. gün** Konum değiştirme (tarayıcı): başka şehir, o şehrin lokasyonu ve departmana taşıma; yalnızca seçilen şehrin lokasyonları sunulur; geçmişte "Şehir: … → …"; API'de yeni değerler. Başka şehrin lokasyonunu doğrudan gönderen istek `400` ve Türkçe alan mesajı, kayıt değişmez | Playwright (Chromium) | 24/24 geçti (tüm tarayıcı testleri) |
 | **24. gün** Zimmet ver/iade et (tarayıcı, gerçek API + SQL Server, sahte AD): `Bim_Envanter` dışındaki `e2e.outsider` detay sayfasından aranıp seçilir ve zimmetlenir, API'de `Assigned`; iade alınır, API'de `Available`, zimmet geçmişinde tek dönem (iade eden `e2e.admin`); pasif hesap listelenmez; pencere açıkken başkası düzenlerse `409` uyarısı ve güncel kayıt | Playwright (Chromium) | 22/22 geçti (tüm tarayıcı testleri) |
 
 Mutasyon denemeleri (kod bilerek bozuldu, testlerin yakaladığı görüldü, sonra geri alındı):
