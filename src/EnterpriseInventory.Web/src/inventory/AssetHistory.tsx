@@ -43,7 +43,7 @@ export function AssetHistory({ assetId }: { assetId: number }) {
               <Box component="ul" sx={{ m: 0, mt: 0.5, pl: 2.5 }}>
                 {changesOf(entry).map((change) => (
                   <Typography component="li" variant="body2" key={change.field} sx={{ overflowWrap: 'anywhere' }}>
-                    {change.field}: {entry.action === 'Created' ? change.after : `${change.before} → ${change.after}`}
+                    {change.field}: {change.text}
                   </Typography>
                 ))}
               </Box>

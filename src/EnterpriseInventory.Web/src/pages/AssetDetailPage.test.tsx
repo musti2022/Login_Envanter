@@ -5,6 +5,7 @@ import { json, mockApi } from '../test/mockApi'
 import { renderWithRouter } from '../test/renderWithRouter'
 
 const csrf = { 'GET /api/auth/csrf': json(200, { token: 'csrf-token' }) }
+const noAssignments = { 'GET /api/assets/1/assignments': json(200, { items: [], page: 1, pageSize: 10, totalCount: 0, totalPages: 0 }) }
 
 const created: AssetHistoryEntry = {
   id: 1,
@@ -51,6 +52,7 @@ describe('AssetDetailPage', () => {
           assignedBy: 'ayse.yilmaz',
         },
       }),
+      ...noAssignments,
       'GET /api/assets/1/history': historyOf([statusChanged, created]),
     })
     renderWithRouter('/envanter/1')
@@ -80,6 +82,7 @@ describe('AssetDetailPage', () => {
   it('writes a dash for empty values and says when the asset is not assigned', async () => {
     mockApi({
       'GET /api/assets/1': json(200, details({ computerName: null, location: null })),
+      ...noAssignments,
       'GET /api/assets/1/history': historyOf([]),
     })
     renderWithRouter('/envanter/1')
@@ -92,7 +95,7 @@ describe('AssetDetailPage', () => {
   })
 
   it('shows the message the form left and clears it', async () => {
-    mockApi({ 'GET /api/assets/1': json(200, details()), 'GET /api/assets/1/history': historyOf([created]) })
+    mockApi({ ...noAssignments, 'GET /api/assets/1': json(200, details()), 'GET /api/assets/1/history': historyOf([created]) })
     const { router } = renderWithRouter({ pathname: '/envanter/1', state: { notice: 'Değişiklikler kaydedildi.' } })
 
     const notice = await screen.findByText('Değişiklikler kaydedildi.')
@@ -107,6 +110,7 @@ describe('AssetDetailPage', () => {
     const requests = mockApi({
       ...csrf,
       'GET /api/assets/1': () => json(200, details({ isArchived: archived })),
+      ...noAssignments,
       'GET /api/assets/1/history': historyOf([created]),
       'DELETE /api/assets/1?rowVersion=AAAAAAAAB9E%3D': () => {
         archived = true
@@ -134,6 +138,7 @@ describe('AssetDetailPage', () => {
     mockApi({
       ...csrf,
       'GET /api/assets/1': () => json(200, details({ rowVersion: `v${version}`, computerName: `PC-V${version}` })),
+      ...noAssignments,
       'GET /api/assets/1/history': historyOf([created]),
       'DELETE /api/assets/1': json(409, { title: 'Kayıt siz düzenlerken başka bir kullanıcı tarafından değiştirildi.', code: 'concurrency_conflict' }),
     })
@@ -156,6 +161,7 @@ describe('AssetDetailPage', () => {
         ...details({ status: 'Assigned' }),
         activeAssignment: { id: 5, employeeId: 9, userName: 'ali.kaya', displayName: 'Ali Kaya', assignmentDescription: null, assignedAt: '2026-10-02T10:00:00Z', assignedBy: 'x' },
       }),
+      ...noAssignments,
       'GET /api/assets/1/history': historyOf([]),
     })
     renderWithRouter('/envanter/1')
@@ -177,6 +183,7 @@ describe('AssetDetailPage', () => {
     let failing = true
     mockApi({
       'GET /api/assets/1': () => (failing ? json(500, { title: 'Hata' }) : json(200, details())),
+      ...noAssignments,
       'GET /api/assets/1/history': json(500, { title: 'Hata' }),
     })
     renderWithRouter('/envanter/1')
@@ -193,6 +200,7 @@ describe('AssetDetailPage', () => {
   it('pages through a long history', async () => {
     const requests = mockApi({
       'GET /api/assets/1': json(200, details()),
+      ...noAssignments,
       'GET /api/assets/1/history?page=1&pageSize=10': historyOf([statusChanged], 15, 1),
       'GET /api/assets/1/history?page=2&pageSize=10': historyOf([created], 15, 2),
     })

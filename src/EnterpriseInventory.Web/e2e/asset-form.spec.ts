@@ -88,7 +88,9 @@ test('the API refuses a code that is taken and the form says so under the field'
   await client.post('/api/assets', { assetCode: `${prefix}-02`, assetType: 'Monitor', modelId: model.id, cityId: city.id, departmentId: department.id })
 
   await page.goto('/envanter/yeni')
-  await page.getByRole('textbox', { name: 'Demirbaş Kodu' }).fill(`${prefix.toLowerCase()}-02`)
+  // Lower case by Turkish rules, as the database compares codes (Turkish_CI_AS): I is ı, so "KIT" and "kıt" are
+  // the same code while "kit" is another one.
+  await page.getByRole('textbox', { name: 'Demirbaş Kodu' }).fill(`${prefix.toLocaleLowerCase('tr-TR')}-02`)
   await choose(page, 'Tür', 'Monitör')
   await choose(page, 'Marka', brand.name)
   await choose(page, 'Model', model.name)

@@ -22,7 +22,7 @@ const password = process.env.EI_E2E_PASSWORD
 
 const fakeUsers = [
   { UserName: 'e2e.admin', DisplayName: 'E2E Yönetici' },
-  { UserName: 'e2e.outsider', DisplayName: 'E2E Grup Dışı', IsAllowedGroupMember: 'false' },
+  { UserName: 'e2e.outsider', DisplayName: 'E2E Grup Dışı', IsAllowedGroupMember: 'false', Department: 'Muhasebe' },
   { UserName: 'e2e.disabled', DisplayName: 'E2E Pasif', IsDisabled: 'true' },
 ]
 
@@ -31,8 +31,10 @@ const apiEnvironment: Record<string, string> = {
   ASPNETCORE_URLS: apiUrl,
   ConnectionStrings__DefaultConnection: connection,
   ActiveDirectory__Mode: 'Fake',
-  // Every sign-in of the suite comes from the same address.
+  // Every sign-in of the suite comes from the same address, and every test works as the same user in parallel
+  // workers: together they make far more requests a minute than one person does.
   RateLimiting__LoginPermitLimit: '100',
+  RateLimiting__PermitLimit: '3000',
 }
 fakeUsers.forEach((user, index) => {
   for (const [key, value] of Object.entries({ ...user, Password: password })) {

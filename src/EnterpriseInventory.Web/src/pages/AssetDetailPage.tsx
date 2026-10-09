@@ -1,5 +1,7 @@
 import ArchiveOutlinedIcon from '@mui/icons-material/ArchiveOutlined'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
+import AssignmentIndOutlinedIcon from '@mui/icons-material/AssignmentIndOutlined'
+import AssignmentReturnOutlinedIcon from '@mui/icons-material/AssignmentReturnOutlined'
 import EditIcon from '@mui/icons-material/Edit'
 import { Alert, Box, Button, Card, CardContent, CardHeader, Chip, Tooltip, Typography } from '@mui/material'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -10,12 +12,16 @@ import { PageHeader } from '../components/PageHeader'
 import { ErrorState } from '../components/states/ErrorState'
 import { LoadingState } from '../components/states/LoadingState'
 import { ArchiveAssetDialog } from '../inventory/ArchiveAssetDialog'
+import { assetSaved } from '../inventory/assetCache'
 import { AssetHistory } from '../inventory/AssetHistory'
+import { AssignAssetDialog } from '../inventory/AssignAssetDialog'
+import { AssignmentHistory } from '../inventory/AssignmentHistory'
 import { parseAssetId } from '../inventory/assetId'
 import { AssetNotFound } from '../inventory/AssetNotFound'
 import { assetQueryKey, assetsQueryKey, fetchAsset, retryUnlessNotFound, type AssetDetails } from '../inventory/assetsApi'
 import { dashboardQueryKey } from '../dashboard/dashboardApi'
-import { formatDateTime, typeLabels } from '../inventory/labels'
+import { formatDateTime, statusLabels, typeLabels } from '../inventory/labels'
+import { ReturnAssetDialog } from '../inventory/ReturnAssetDialog'
 import { StatusChip } from '../inventory/StatusChip'
 
 export function AssetDetailPage() {
@@ -24,6 +30,8 @@ export function AssetDetailPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [archiveTarget, setArchiveTarget] = useState<AssetDetails | null>(null)
+  const [assignTarget, setAssignTarget] = useState<AssetDetails | null>(null)
+  const [returnTarget, setReturnTarget] = useState<AssetDetails | null>(null)
   const asset = useQuery({
     queryKey: assetQueryKey(assetId ?? 0),
     queryFn: ({ signal }) => fetchAsset(assetId!, signal),
@@ -76,6 +84,11 @@ export function AssetDetailPage() {
     void queryClient.invalidateQueries({ queryKey: assetsQueryKey })
     void queryClient.invalidateQueries({ queryKey: dashboardQueryKey })
   }
+  const saved = (asset: AssetDetails, notice: string) => {
+    assetSaved(queryClient, asset)
+    navigate(location.pathname, { replace: true, state: { notice } })
+  }
+  const assignable = data.status === 'Available'
 
   return (
     <>
@@ -86,7 +99,20 @@ export function AssetDetailPage() {
         actions={
           !data.isArchived && (
             <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-              <Button variant="contained" startIcon={<EditIcon />} component={RouterLink} to={`/envanter/${data.id}/duzenle`}>
+              {assigned ? (
+                <Button variant="contained" startIcon={<AssignmentReturnOutlinedIcon />} onClick={() => setReturnTarget(data)}>
+                  İade Al
+                </Button>
+              ) : (
+                <Tooltip title={assignable ? '' : `${statusLabels[data.status]} demirbaş zimmetlenemez; önce durumunu Boşta yapın.`}>
+                  <span>
+                    <Button variant="contained" startIcon={<AssignmentIndOutlinedIcon />} disabled={!assignable} onClick={() => setAssignTarget(data)}>
+                      Zimmet Ver
+                    </Button>
+                  </span>
+                </Tooltip>
+              )}
+              <Button variant="outlined" startIcon={<EditIcon />} component={RouterLink} to={`/envanter/${data.id}/duzenle`}>
                 Düzenle
               </Button>
               <Tooltip title={assigned ? 'Zimmetli demirbaş arşivlenemez; önce iadesini alın.' : ''}>
@@ -158,12 +184,39 @@ export function AssetDetailPage() {
           </Section>
         </Box>
       </Box>
-      <Card sx={{ mt: 2 }}>
-        <CardHeader title="Geçmiş" slotProps={{ title: { variant: 'h6', component: 'h2' } }} />
-        <CardContent sx={{ pt: 0 }}>
-          <AssetHistory assetId={data.id} />
-        </CardContent>
-      </Card>
+      <Box sx={{ mt: 2, display: 'grid', gap: 2, gridTemplateColumns: { xs: 'minmax(0, 1fr)', lg: 'repeat(2, minmax(0, 1fr))' }, alignItems: 'start' }}>
+        <Card>
+          <CardHeader title="Zimmet geçmişi" slotProps={{ title: { variant: 'h6', component: 'h2' } }} />
+          <CardContent sx={{ pt: 0 }}>
+            <AssignmentHistory assetId={data.id} />
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader title="Geçmiş" slotProps={{ title: { variant: 'h6', component: 'h2' } }} />
+          <CardContent sx={{ pt: 0 }}>
+            <AssetHistory assetId={data.id} />
+          </CardContent>
+        </Card>
+      </Box>
+      <AssignAssetDialog
+        asset={assignTarget}
+        onClose={() => setAssignTarget(null)}
+        onAssigned={(asset) => {
+          setAssignTarget(null)
+          const holder = asset.activeAssignment
+          saved(asset, holder ? `${asset.assetCode}, ${holder.displayName} adlı çalışana zimmetlendi.` : `${asset.assetCode} zimmetlendi.`)
+        }}
+        onConflict={refresh}
+      />
+      <ReturnAssetDialog
+        asset={returnTarget}
+        onClose={() => setReturnTarget(null)}
+        onReturned={(asset) => {
+          setReturnTarget(null)
+          saved(asset, `${asset.assetCode} iade alındı.`)
+        }}
+        onConflict={refresh}
+      />
       <ArchiveAssetDialog
         asset={archiveTarget}
         onClose={() => setArchiveTarget(null)}

@@ -1,10 +1,10 @@
-# Envanter ekranları (16–20. gün)
+# Envanter ekranları (16–20. ve 24. gün)
 
 Kod: `src/EnterpriseInventory.Web/src/pages` (`DashboardPage`, `InventoryPage`, `AssetCreatePage`, `AssetEditPage`,
 `AssetDetailPage`) ve `src/EnterpriseInventory.Web/src/inventory`. Testler: aynı klasörlerdeki `*.test.ts(x)`
 (Vitest, sahte API) ve `src/EnterpriseInventory.Web/e2e` (Playwright, gerçek API ve SQL Server; Development modunda
 sahte AD). Sunucu tarafı: [`assets-api.md`](assets-api.md), [`lookups-api.md`](lookups-api.md),
-`GET /api/dashboard/statistics`.
+[`assignments-api.md`](assignments-api.md), `GET /api/dashboard/statistics`.
 
 ## Gösterge Paneli (16. gün)
 
@@ -62,6 +62,28 @@ sahte AD). Sunucu tarafı: [`assets-api.md`](assets-api.md), [`lookups-api.md`](
 - Durumlar: yükleniyor; bulunamadı (`404`, yeniden denenmez); yükleme hatası ("Tekrar dene"); geçmiş boş; geçmiş
   yüklenemedi.
 
+## Zimmet ver ve iade al (24. gün)
+
+Detay sayfasında, arşivlenmemiş demirbaşta:
+
+- **Zimmet Ver** (yalnızca Boşta demirbaşta; Arızalı/Hurda'da kapalı ve nedeni ipucunda): pencerede "Çalışan"
+  kutusu Active Directory'de arar (`GET /api/employees/search`). Arama en az 2 harf ister, yazma bitince 300 ms
+  bekler, sonuçları sunucu süzdüğü için tarayıcıda yeniden süzmez. Seçenekte görünen ad, kullanıcı adı, departman
+  ve unvan görünür. `Bim_Envanter` üyesi olması gerekmez; pasif hesaplar listelenmez. Sonuç sınırı aşılırsa "İlk
+  sonuçlar gösteriliyor; ... daha ayrıntılı yazın", dizine ulaşılamazsa "Çalışan dizinine şu anda ulaşılamıyor"
+  yazar. "Zimmet Tanımı" zorunlu (en fazla 500), "Not" isteğe bağlı (en fazla 1000). Gönderim, ekranda gösterilen
+  sürümün `rowVersion`'ı ile yapılır.
+- **İade Al** (zimmetli demirbaşta "Zimmet Ver" yerine): kimden iade alınacağını söyleyen onay penceresi.
+- Başarılı işlemden sonra sunucunun döndürdüğü güncel kayıt gösterilir ("DMR-0001, Ali Kaya adlı çalışana
+  zimmetlendi." / "DMR-0001 iade alındı."); liste, geçmişler ve gösterge paneli yeniden alınır.
+- Çakışma (`409 concurrency_conflict`) veya demirbaşın bu arada zimmetlenmesi, arızalı yapılması, arşivlenmesi:
+  pencerede Türkçe uyarı, gönder düğmesi kapanır ve sayfa güncel kaydı gösterir; veri ezilmez. Pasif hesap
+  (`employee_inactive`) uyarısından sonra başka çalışan seçilebilir. Alan hataları alanın altında gösterilir.
+- **Zimmet geçmişi** kartı (`GET /api/assets/{id}/assignments`): en yeni dönem üstte, 10'ar kayıt; kişi,
+  departman, zimmet ve iade tarihi/yapan, tanım, not; "Zimmette" / "İade alındı" etiketi. Audit geçmişinde
+  zimmet ve iade kayıtları kişi adı, kullanıcı adı, tanım ve tarihlerle Türkçe gösterilir; AD GUID'i ve iç
+  kimlikler gösterilmez.
+
 ## Test sonuçları
 
 | Kapsam | Araç | Sonuç |
@@ -69,7 +91,9 @@ sahte AD). Sunucu tarafı: [`assets-api.md`](assets-api.md), [`lookups-api.md`](
 | Web birim/bileşen testleri (giriş, yerleşim, panel, liste, filtreler, form, detay) | Vitest | 91/91 geçti |
 | Tanım listeleri API'si (sıralama, filtre, ekleme, audit, aynı ad, doğrulama, CSRF, 401/403) | xUnit + SQL Server | 55/55 geçti |
 | Tüm .NET testleri | xUnit | 326 birim + 394 entegrasyon geçti |
-| Tarayıcı testleri: giriş/çıkış, panel = API, filtre/arama/sıralama/sayfalama = API, arşiv listesi, formdan ekleme, aynı kod, eski sürümle düzenleme reddi ve yeniden yapma, formdan tanım ekleme, 390 px telefon görünümü, bulunamadı sayfaları | Playwright (Chromium) | 19/19 geçti |
+| Tarayıcı testleri: giriş/çıkış, panel = API, filtre/arama/sıralama/sayfalama = API, arşiv listesi, formdan ekleme, aynı kod, eski sürümle düzenleme reddi ve yeniden yapma, formdan tanım ekleme, 390 px telefon görünümü, bulunamadı sayfaları | Playwright (Chromium) | 19/19 geçti (20. gün) |
+| **24. gün** Zimmet ver/iade et (Vitest): AD araması ve seçim, gövde ve CSRF, kırpılmış tanım, zimmetli kişi ve geçmiş; boş alan hataları; 2 harften önce arama yok; dizine ulaşılamıyor; pasif hesap sonrası yeniden seçim; çakışmada uyarı ve yenileme; arızalıda kapalı düğme; onaylı iade ve geçmişte kalan dönem; iade çakışması; audit'te zimmet/iade alanları | Vitest | 100/100 geçti (tüm web testleri) |
+| **24. gün** Zimmet ver/iade et (tarayıcı, gerçek API + SQL Server, sahte AD): `Bim_Envanter` dışındaki `e2e.outsider` detay sayfasından aranıp seçilir ve zimmetlenir, API'de `Assigned`; iade alınır, API'de `Available`, zimmet geçmişinde tek dönem (iade eden `e2e.admin`); pasif hesap listelenmez; pencere açıkken başkası düzenlerse `409` uyarısı ve güncel kayıt | Playwright (Chromium) | 22/22 geçti (tüm tarayıcı testleri) |
 
 Mutasyon denemeleri (kod bilerek bozuldu, testlerin yakaladığı görüldü, sonra geri alındı):
 
@@ -88,3 +112,4 @@ Mutasyon denemeleri (kod bilerek bozuldu, testlerin yakaladığı görüldü, so
 | Pasif marka altına model eklemek (API) | Tanım API testi |
 | Tanım listelerini ada göre sıralamamak (API) | Türkçe sıralama testi |
 | Telefonda sayfalama düğmelerinin kartın dışına taşması | 390 px Playwright testi |
+| Zimmet çakışmasında sayfayı yenilememek | Zimmet çakışması testi (Vitest) |
