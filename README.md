@@ -4,8 +4,9 @@
 üzerinden LDAPS ile yapılır ve yalnızca `Bim_Envanter` güvenlik grubunun üyeleri uygulamaya girebilir.
 Proje gereksinimleri ve 40 günlük plan: [`proje_talimatlari.md`](proje_talimatlari.md).
 
-> **Durum:** 4. gün — solution iskeleti, Türkçe arayüz kabuğu, domain modeli ve SQL Server şeması (EF Core migration,
-> RowVersion, kısıtlar). Login, envanter ve zimmet ekranları henüz yok.
+> **Durum:** 5. gün — solution iskeleti, Türkçe arayüz kabuğu, domain modeli, SQL Server şeması (EF Core migration,
+> RowVersion, kısıtlar) ve API altyapısı (health endpoint'leri, varsayılan olarak kapalı yetkilendirme, hata yanıtları,
+> güvenlik başlıkları, rate limiting). Login, envanter ve zimmet ekranları henüz yok.
 
 ## Teknolojiler
 
@@ -35,7 +36,8 @@ deploy/                                IIS yayın dosyaları
 ```
 
 Katman bağımlılık kuralları için bkz. [`docs/architecture.md`](docs/architecture.md); veritabanı tasarımı, migration
-komutları ve SQL hesap yetkileri için [`docs/database.md`](docs/database.md).
+komutları ve SQL hesap yetkileri için [`docs/database.md`](docs/database.md); health endpoint'leri, yetkilendirme, hata
+yanıtları ve güvenlik başlıkları için [`docs/api.md`](docs/api.md).
 
 ## Gereksinimler
 
@@ -72,6 +74,9 @@ cp .env.example .env.local
 npm run dev                                                               # /api ve /hubs API'ye yönlendirilir
 ```
 
+API ayaktaysa `https://localhost:7261/api/health/live` `Healthy` döner; `.../api/health/ready` veritabanı bağlantısı ve
+migration durumunu da kontrol eder (bkz. [`docs/api.md`](docs/api.md#health-endpointleri)).
+
 Vite proxy'si API'nin HTTPS sertifikasını doğrular (`secure: true`); doğrulama kapatılmaz. Node.js işletim
 sisteminin sertifika deposunu varsayılan olarak kullanmadığı için ASP.NET Core geliştirme sertifikasını
 Node'a ayrıca tanıtın:
@@ -102,6 +107,7 @@ belli değildir ve **repoya hiçbir gizli değer eklenmez**.
 | `ActiveDirectory:AllowedGroupSid` | `Bim_Envanter` grubunun SID'i (yetki kontrolü isim değil SID üzerinden yapılır) |
 | `ActiveDirectory:NestedGroupPolicy` | İç içe grup politikası; varsayılan `DirectMembershipOnly` |
 | `ActiveDirectory:ServiceAccountUserName` / `ServiceAccountPassword` | Çalışan araması için servis hesabı |
+| `RateLimiting:PermitLimit` / `WindowSeconds` | Kullanıcı başına istek limiti; varsayılan 60 saniyede 300 |
 
 Değerler şu yollarla verilir:
 

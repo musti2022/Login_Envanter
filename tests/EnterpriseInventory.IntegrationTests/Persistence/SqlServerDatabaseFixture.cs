@@ -24,6 +24,8 @@ public sealed class SqlServerDatabaseFixture : IAsyncLifetime
 
     public TestClock Clock { get; } = new(new DateTimeOffset(2026, 10, 9, 6, 0, 0, TimeSpan.Zero));
 
+    private readonly List<string> _createdDatabases = [];
+
     public string ConnectionString { get; private set; } = string.Empty;
 
     public async Task InitializeAsync()
@@ -33,9 +35,25 @@ public sealed class SqlServerDatabaseFixture : IAsyncLifetime
             return;
         }
 
-        var databaseName = $"EI_Test_{Guid.NewGuid():N}";
-        ConnectionString = new SqlConnectionStringBuilder(ServerConnectionString) { InitialCatalog = databaseName }.ConnectionString;
+        ConnectionString = await CreateEmptyDatabaseAsync();
+        await using var context = CreateContext();
+        await context.Database.MigrateAsync();
+    }
 
+    public async Task DisposeAsync()
+    {
+        foreach (var connectionString in _createdDatabases)
+        {
+            await using var context = new ApplicationDbContext(
+                new DbContextOptionsBuilder<ApplicationDbContext>().UseSqlServer(connectionString).Options);
+            await context.Database.EnsureDeletedAsync();
+        }
+    }
+
+    /// <summary>Creates a database without any tables; it is dropped with the fixture.</summary>
+    public async Task<string> CreateEmptyDatabaseAsync()
+    {
+        var databaseName = $"EI_Test_{Guid.NewGuid():N}";
         var master = new SqlConnectionStringBuilder(ServerConnectionString) { InitialCatalog = "master" };
         await using (var connection = new SqlConnection(master.ConnectionString))
         {
@@ -47,19 +65,9 @@ public sealed class SqlServerDatabaseFixture : IAsyncLifetime
             await command.ExecuteNonQueryAsync();
         }
 
-        await using var context = CreateContext();
-        await context.Database.MigrateAsync();
-    }
-
-    public async Task DisposeAsync()
-    {
-        if (ConnectionString.Length == 0)
-        {
-            return;
-        }
-
-        await using var context = CreateContext();
-        await context.Database.EnsureDeletedAsync();
+        var connectionString = new SqlConnectionStringBuilder(ServerConnectionString) { InitialCatalog = databaseName }.ConnectionString;
+        _createdDatabases.Add(connectionString);
+        return connectionString;
     }
 
     /// <summary>A new context whose saves are stamped with <paramref name="userName"/> and <see cref="Clock"/>.</summary>

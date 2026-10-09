@@ -46,6 +46,7 @@ public class AppliedMigrationTests(SqlServerDatabaseFixture database)
             })
             .Build();
         var services = new ServiceCollection();
+        services.AddLogging();
         services.AddSingleton<TimeProvider>(database.Clock);
         services.AddScoped<ICurrentUser>(_ => new TestCurrentUser("di.admin"));
         services.AddInfrastructure(configuration);

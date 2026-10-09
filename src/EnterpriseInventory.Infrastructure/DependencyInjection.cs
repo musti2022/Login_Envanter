@@ -31,6 +31,9 @@ public static class DependencyInjection
             options.AddInterceptors(serviceProvider.GetRequiredService<AuditableEntityInterceptor>());
         });
 
+        services.AddHealthChecks()
+            .AddCheck<DatabaseHealthCheck>("database", tags: [HealthCheckTags.Ready], timeout: TimeSpan.FromSeconds(5));
+
         return services;
     }
 }
