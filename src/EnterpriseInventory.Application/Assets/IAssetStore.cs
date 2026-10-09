@@ -8,4 +8,10 @@ public interface IAssetStore
 
     /// <summary>The asset, archived or not, or <c>null</c> when there is none with that ID.</summary>
     Task<AssetDetails?> FindAsync(int id, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Adds the asset with a <c>Created</c> audit record in one transaction. Missing or inactive lookups and
+    /// duplicate codes or serial numbers are refused with field errors.
+    /// </summary>
+    Task<AssetWriteResult> CreateAsync(AssetDraft draft, CancellationToken cancellationToken);
 }

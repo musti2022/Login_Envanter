@@ -9,7 +9,10 @@ public sealed record AssetListResult(PagedResult<AssetListItem>? Page, IDictiona
 }
 
 /// <summary>Inventory use cases: checks the caller's input and hands it to <see cref="IAssetStore"/>.</summary>
-public sealed class AssetService(IValidator<AssetListRequest> listValidator, IAssetStore store)
+public sealed class AssetService(
+    IValidator<AssetListRequest> listValidator,
+    IValidator<SaveAssetRequest> saveValidator,
+    IAssetStore store)
 {
     public async Task<AssetListResult> ListAsync(AssetListRequest request, CancellationToken cancellationToken)
     {
@@ -26,4 +29,14 @@ public sealed class AssetService(IValidator<AssetListRequest> listValidator, IAs
     }
 
     public Task<AssetDetails?> FindAsync(int id, CancellationToken cancellationToken) => store.FindAsync(id, cancellationToken);
+
+    public async Task<AssetWriteResult> CreateAsync(SaveAssetRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var validation = await saveValidator.ValidateAsync(request, cancellationToken).ConfigureAwait(false);
+        return validation.IsValid
+            ? await store.CreateAsync(AssetDraft.From(request), cancellationToken).ConfigureAwait(false)
+            : AssetWriteResult.Invalid(validation.ToDictionary());
+    }
 }

@@ -1,10 +1,23 @@
+using EnterpriseInventory.Application.Abstractions;
 using EnterpriseInventory.Application.Assets;
+using EnterpriseInventory.Domain.Assets;
+using EnterpriseInventory.Domain.Auditing;
+using EnterpriseInventory.Domain.Catalog;
+using EnterpriseInventory.Domain.Common;
+using EnterpriseInventory.Domain.Organization;
 using EnterpriseInventory.Infrastructure.Persistence;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace EnterpriseInventory.Infrastructure.Assets;
 
-internal sealed class AssetStore(ApplicationDbContext db) : IAssetStore
+internal sealed partial class AssetStore(
+    ApplicationDbContext db,
+    ICurrentUser currentUser,
+    IRequestContext requestContext,
+    TimeProvider timeProvider,
+    ILogger<AssetStore> logger) : IAssetStore
 {
     public async Task<PagedResult<AssetListItem>> ListAsync(AssetListCriteria criteria, CancellationToken cancellationToken)
     {
@@ -120,4 +133,177 @@ internal sealed class AssetStore(ApplicationDbContext db) : IAssetStore
                 row.UpdatedBy,
                 Convert.ToBase64String(row.RowVersion));
     }
+
+    public async Task<AssetWriteResult> CreateAsync(AssetDraft draft, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(draft);
+
+        var (references, errors) = await LoadReferencesAsync(draft, current: null, cancellationToken).ConfigureAwait(false);
+        if (errors.Count > 0)
+        {
+            return AssetWriteResult.Invalid(errors);
+        }
+
+        var duplicates = await FindDuplicatesAsync(draft, exceptAssetId: 0, cancellationToken).ConfigureAwait(false);
+        if (duplicates.Count > 0)
+        {
+            return AssetWriteResult.Duplicate(duplicates);
+        }
+
+        Asset asset;
+        try
+        {
+            asset = Asset.Create(
+                draft.AssetCode,
+                draft.AssetType,
+                references.Model,
+                references.City,
+                references.Department,
+                references.Location,
+                draft.ComputerName,
+                draft.SerialNumber,
+                draft.Description);
+            if (draft.Status is { } status && status != asset.Status)
+            {
+                asset.ChangeStatus(status);
+            }
+        }
+        catch (DomainException ex)
+        {
+            return AssetWriteResult.Rule(ex.Code);
+        }
+
+        try
+        {
+            await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+            db.Assets.Add(asset);
+
+            // Saved first so the audit record can name the asset by its ID.
+            await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+            Audit(asset, AuditAction.Created, oldValues: null, AssetAuditTrail.Serialize(AssetAuditTrail.Snapshot(asset)));
+            await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (DbUpdateException ex) when (ex.IsUniqueKeyViolation())
+        {
+            // Another request took the code or serial number between the check above and the insert.
+            db.ChangeTracker.Clear();
+            return AssetWriteResult.Duplicate(DuplicateField(ex));
+        }
+
+        LogCreated(asset.Id, asset.AssetCode);
+        return AssetWriteResult.Succeeded(await FindAsync(asset.Id, cancellationToken).ConfigureAwait(false));
+    }
+
+    /// <summary>
+    /// Loads the chosen lookups. A missing one is an error; an inactive one is an error only when it is newly
+    /// chosen, because an asset may keep a value that has since been deactivated (the domain's rule).
+    /// </summary>
+    private async Task<(References References, Dictionary<string, string[]> Errors)> LoadReferencesAsync(
+        AssetDraft draft, Asset? current, CancellationToken cancellationToken)
+    {
+        var errors = new Dictionary<string, string[]>();
+
+        var model = await db.AssetModels.Include(m => m.Brand)
+            .SingleOrDefaultAsync(m => m.Id == draft.ModelId, cancellationToken).ConfigureAwait(false);
+        var newModel = current?.ModelId != draft.ModelId;
+        if (model is null)
+        {
+            errors[nameof(AssetDraft.ModelId)] = [AssetMessages.ModelNotFound];
+        }
+        else if (newModel && !model.IsActive)
+        {
+            errors[nameof(AssetDraft.ModelId)] = [AssetMessages.ModelInactive];
+        }
+        else if (newModel && !model.Brand.IsActive)
+        {
+            errors[nameof(AssetDraft.ModelId)] = [AssetMessages.BrandInactive];
+        }
+
+        var city = await db.Cities.SingleOrDefaultAsync(c => c.Id == draft.CityId, cancellationToken).ConfigureAwait(false);
+        if (city is null)
+        {
+            errors[nameof(AssetDraft.CityId)] = [AssetMessages.CityNotFound];
+        }
+        else if (current?.CityId != draft.CityId && !city.IsActive)
+        {
+            errors[nameof(AssetDraft.CityId)] = [AssetMessages.CityInactive];
+        }
+
+        var department = await db.Departments.SingleOrDefaultAsync(d => d.Id == draft.DepartmentId, cancellationToken).ConfigureAwait(false);
+        if (department is null)
+        {
+            errors[nameof(AssetDraft.DepartmentId)] = [AssetMessages.DepartmentNotFound];
+        }
+        else if (current?.DepartmentId != draft.DepartmentId && !department.IsActive)
+        {
+            errors[nameof(AssetDraft.DepartmentId)] = [AssetMessages.DepartmentInactive];
+        }
+
+        Location? location = null;
+        if (draft.LocationId is { } locationId)
+        {
+            location = await db.Locations.SingleOrDefaultAsync(l => l.Id == locationId, cancellationToken).ConfigureAwait(false);
+            if (location is null)
+            {
+                errors[nameof(AssetDraft.LocationId)] = [AssetMessages.LocationNotFound];
+            }
+            else if (location.CityId != draft.CityId)
+            {
+                errors[nameof(AssetDraft.LocationId)] = [AssetMessages.LocationInAnotherCity];
+            }
+            else if (current?.LocationId != locationId && !location.IsActive)
+            {
+                errors[nameof(AssetDraft.LocationId)] = [AssetMessages.LocationInactive];
+            }
+        }
+
+        return (new References(model!, city!, department!, location), errors);
+    }
+
+    /// <summary>Asset codes and serial numbers are unique across all assets, archived ones included.</summary>
+    private async Task<Dictionary<string, string[]>> FindDuplicatesAsync(AssetDraft draft, int exceptAssetId, CancellationToken cancellationToken)
+    {
+        var errors = new Dictionary<string, string[]>();
+
+        // The columns' Turkish_CI_AS collation makes these comparisons case-insensitive, like the unique indexes.
+        if (await db.Assets.AnyAsync(a => a.AssetCode == draft.AssetCode && a.Id != exceptAssetId, cancellationToken).ConfigureAwait(false))
+        {
+            errors[nameof(AssetDraft.AssetCode)] = [AssetMessages.AssetCodeTaken];
+        }
+
+        if (draft.SerialNumber is { } serial
+            && await db.Assets.AnyAsync(a => a.SerialNumber == serial && a.Id != exceptAssetId, cancellationToken).ConfigureAwait(false))
+        {
+            errors[nameof(AssetDraft.SerialNumber)] = [AssetMessages.SerialNumberTaken];
+        }
+
+        return errors;
+    }
+
+    private static Dictionary<string, string[]> DuplicateField(DbUpdateException exception)
+    {
+        var message = (exception.InnerException as SqlException)?.Message ?? string.Empty;
+        return message.Contains("IX_Assets_SerialNumber", StringComparison.Ordinal)
+            ? new() { [nameof(AssetDraft.SerialNumber)] = [AssetMessages.SerialNumberTaken] }
+            : message.Contains("IX_Assets_AssetCode", StringComparison.Ordinal)
+                ? new() { [nameof(AssetDraft.AssetCode)] = [AssetMessages.AssetCodeTaken] }
+                : throw new InvalidOperationException("An unexpected unique index refused the asset.", exception);
+    }
+
+    private void Audit(Asset asset, AuditAction action, string? oldValues, string? newValues) =>
+        db.AuditLogs.Add(AuditLog.Create(
+            AssetAuditTrail.EntityName,
+            AssetAuditTrail.EntityId(asset),
+            action,
+            oldValues,
+            newValues,
+            currentUser.UserName ?? throw new InvalidOperationException("Assets can only be changed by a signed-in user."),
+            timeProvider.GetUtcNow(),
+            requestContext.CorrelationId));
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Asset {AssetId} ({AssetCode}) created")]
+    private partial void LogCreated(int assetId, string assetCode);
+
+    private sealed record References(AssetModel Model, City City, Department Department, Location? Location);
 }
