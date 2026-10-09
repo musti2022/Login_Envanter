@@ -14,6 +14,10 @@ public sealed class AssetAuthorizationTests
         { "PUT", "/api/assets/1" },
         { "DELETE", "/api/assets/1?rowVersion=AAAAAAAAB9A%3D" },
         { "GET", "/api/assets/1/history" },
+        { "GET", "/api/assets/1/assignments" },
+        { "POST", "/api/assets/1/assignments" },
+        { "POST", "/api/assets/1/returns" },
+        { "GET", "/api/employees/search?q=mehmet" },
     };
 
     [Theory]

@@ -25,6 +25,7 @@ Kod: `src/EnterpriseInventory.Api/Assets`, `src/EnterpriseInventory.Application/
 | `PUT /api/assets/{id}` | Güncelleme (RowVersion ile) | `200` güncel detay |
 | `DELETE /api/assets/{id}?rowVersion=…` | Arşivleme (soft delete) | `204` |
 | `GET /api/assets/{id}/history` | Audit geçmişi | `200` sayfa |
+| `GET`/`POST /api/assets/{id}/assignments`, `POST /api/assets/{id}/returns` | Zimmet geçmişi, zimmet verme, iade alma | bkz. [`assignments-api.md`](assignments-api.md) |
 
 ## Listeleme: `GET /api/assets`
 
@@ -171,6 +172,7 @@ Demirbaşın audit kayıtları, en yeni önce. `page`, `pageSize` (varsayılan 5
 | Şehir, departman veya lokasyon değişikliği | `LocationChanged` | Yalnızca değişen alanlar |
 | Durum değişikliği | `StatusChanged` | `status` |
 | Arşivleme | `Archived` | `isArchived` |
+| Zimmet, iade | `Assigned`, `Returned` | bkz. [`assignments-api.md`](assignments-api.md#audit-kayıtları) |
 
 - Bir düzenlemede birden çok türde değişiklik olursa her tür için ayrı kayıt yazılır; hepsi aynı kullanıcı, zaman
   ve correlation ID'yi taşır ve demirbaş değişikliğiyle birlikte commit edilir.
@@ -228,5 +230,4 @@ Testlerin hatayı gerçekten yakaladığı, kod bilerek bozularak denendi (sonra
 ## Henüz yapılmayanlar
 
 - Başarılı kayıttan sonra SignalR bildirimi (`AssetCreated`, `AssetUpdated`, `AssetArchived`, `AssetLocationChanged`).
-- Zimmet ve iade uç noktaları; şimdilik testler zimmeti doğrudan veritabanına yazar.
 - Tanımların adını değiştirme ve pasifleştirme uç noktaları (listeleme ve ekleme 18. günde eklendi).

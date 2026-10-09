@@ -1,3 +1,4 @@
+using EnterpriseInventory.Api.Employees;
 using EnterpriseInventory.Api.Http;
 using EnterpriseInventory.Application.Assets;
 using Microsoft.AspNetCore.Http.HttpResults;
@@ -31,6 +32,15 @@ internal static class AssetEndpoints
         // Archives: the asset is soft-deleted and keeps its history (see IAssetStore.ArchiveAsync).
         assets.MapDelete("/{id:int}", ArchiveAsync);
         assets.MapGet("/{id:int}/history", HistoryAsync);
+
+        // Assignment periods (zimmet geçmişi), giving the asset to an employee, and taking it back.
+        assets.MapGet("/{id:int}/assignments", AssignmentsAsync);
+        assets.MapPost("/{id:int}/assignments", AssignAsync)
+            .Accepts<AssignAssetRequest>("application/json")
+            .WithMetadata(new RequestSizeLimitAttribute(MaxBodyBytes));
+        assets.MapPost("/{id:int}/returns", ReturnAsync)
+            .Accepts<ReturnAssetRequest>("application/json")
+            .WithMetadata(new RequestSizeLimitAttribute(MaxBodyBytes));
         return endpoints;
     }
 
@@ -76,6 +86,32 @@ internal static class AssetEndpoints
         };
     }
 
+    private static async Task<Results<Ok<PagedResult<AssetAssignmentItem>>, ValidationProblem, ProblemHttpResult>> AssignmentsAsync(
+        int id, [AsParameters] AssetAssignmentsRequest request, AssetAssignmentService assignments, CancellationToken cancellationToken)
+    {
+        var result = await assignments.ListAsync(id, request, cancellationToken);
+        return result switch
+        {
+            { Page: { } page } => TypedResults.Ok(page),
+            { Errors: { } errors } => ApiResults.ValidationProblem(errors),
+            _ => NotFound(),
+        };
+    }
+
+    private static async Task<IResult> AssignAsync(int id, AssignAssetRequest body, AssetAssignmentService assignments, CancellationToken cancellationToken)
+    {
+        var result = await assignments.AssignAsync(id, body, cancellationToken);
+        return result is { Outcome: AssetWriteOutcome.Succeeded, Asset: { } asset }
+            ? TypedResults.Created($"{Path}/{id}/assignments", asset)
+            : Failure(result);
+    }
+
+    private static async Task<IResult> ReturnAsync(int id, ReturnAssetRequest body, AssetAssignmentService assignments, CancellationToken cancellationToken)
+    {
+        var result = await assignments.ReturnAsync(id, body, cancellationToken);
+        return result is { Outcome: AssetWriteOutcome.Succeeded, Asset: { } asset } ? TypedResults.Ok(asset) : Failure(result);
+    }
+
     /// <summary>The response for a write that did not succeed.</summary>
     private static IResult Failure(AssetWriteResult result) => result.Outcome switch
     {
@@ -95,6 +131,7 @@ internal static class AssetEndpoints
             "Kayıt siz düzenlerken başka bir kullanıcı tarafından değiştirildi.",
             "Değişiklikleriniz kaydedilmedi. Kaydı yeniden açıp güncel bilgiler üzerinde tekrar deneyin.",
             "concurrency_conflict"),
+        AssetWriteOutcome.DirectoryUnavailable => EmployeeEndpoints.DirectoryUnavailable(),
         _ => AssetProblems.ForRule(result.RuleCode),
     };
 

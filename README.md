@@ -4,7 +4,7 @@
 üzerinden LDAPS ile yapılır ve yalnızca `Bim_Envanter` güvenlik grubunun üyeleri uygulamaya girebilir.
 Proje gereksinimleri ve 40 günlük plan: [`proje_talimatlari.md`](proje_talimatlari.md).
 
-> **Durum:** 20. gün (talimat v1.1'in EF Core kurallarına göre denetlendi) — solution iskeleti, Türkçe arayüz kabuğu,
+> **Durum:** 23. gün — solution iskeleti, Türkçe arayüz kabuğu,
 > domain modeli, SQL Server şeması (EF Core migration, RowVersion, kısıtlar, soft delete sorgu filtresi, idempotent
 > yayın betiği, yedek ve geri dönüş planı, geliştirme seed'i), API altyapısı (health endpoint'leri, varsayılan olarak kapalı yetkilendirme, hata yanıtları,
 > güvenlik başlıkları, rate limiting), Active Directory LDAPS bağlantısı (sıkı TLS sertifika doğrulaması), giriş API'si
@@ -13,9 +13,10 @@ Proje gereksinimleri ve 40 günlük plan: [`proje_talimatlari.md`](proje_talimat
 > Data Protection anahtarları), Türkçe giriş ekranı ile korumalı sayfalar, demirbaş API'si (listeleme, arama,
 > filtre, sıralama, sayfalama, detay, ekleme, RowVersion ile güncelleme ve `409` çakışma uyarısı, arşivleme, audit
 > geçmişi), tanım listeleri API'si (marka, model, şehir, lokasyon, departman) ve envanter ekranları (gösterge paneli,
-> tablo, arama ve filtreler, ekleme/düzenleme formu, detay, geçmiş, arşivleme, telefon görünümü). AD entegrasyonu
-> Samba test domain'i ile test edildi; şirketin gerçek AD'si ile henüz denenmedi. Zimmet/iade API'si ve ekranları,
-> tanım yönetimi (ad değiştirme, pasifleştirme) ve SignalR henüz yok.
+> tablo, arama ve filtreler, ekleme/düzenleme formu, detay, geçmiş, arşivleme, telefon görünümü), AD'de çalışan
+> araması ve zimmet API'si (tek transaction'da zimmet verme ve iade, filtreli benzersiz indeksle tek aktif zimmet,
+> zimmet geçmişi). AD entegrasyonu Samba test domain'i ile test edildi; şirketin gerçek AD'si ile henüz denenmedi.
+> Zimmet ekranları, tanım yönetimi (ad değiştirme, pasifleştirme) ve SignalR henüz yok.
 
 ## Teknolojiler
 
@@ -51,7 +52,8 @@ sertifika doğrulaması, giriş akışı ve grup yetkisi için [`docs/active-dir
 CSRF, çıkış ve zaman aşımı kuralları için [`docs/session-security.md`](docs/session-security.md); giriş ekranı ve
 korumalı sayfalar için [`docs/web-auth.md`](docs/web-auth.md); demirbaş uç noktaları, arama ve filtreler,
 RowVersion çakışması, arşivleme ve audit için [`docs/assets-api.md`](docs/assets-api.md); marka, model, şehir,
-lokasyon ve departman listeleri için [`docs/lookups-api.md`](docs/lookups-api.md); gösterge paneli, envanter tablosu,
+lokasyon ve departman listeleri için [`docs/lookups-api.md`](docs/lookups-api.md); çalışan araması, zimmet ve iade
+için [`docs/assignments-api.md`](docs/assignments-api.md); gösterge paneli, envanter tablosu,
 filtreler, form ve detay ekranları için [`docs/inventory-ui.md`](docs/inventory-ui.md).
 
 ## Gereksinimler

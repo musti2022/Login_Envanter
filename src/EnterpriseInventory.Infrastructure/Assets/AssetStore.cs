@@ -233,51 +233,59 @@ internal sealed partial class AssetStore(
     {
         ArgumentNullException.ThrowIfNull(draft);
 
-        var (references, errors) = await LoadReferencesAsync(draft, current: null, cancellationToken).ConfigureAwait(false);
-        if (errors.Count > 0)
-        {
-            return AssetWriteResult.Invalid(errors);
-        }
-
-        var duplicates = await FindDuplicatesAsync(draft, exceptAssetId: 0, cancellationToken).ConfigureAwait(false);
-        if (duplicates.Count > 0)
-        {
-            return AssetWriteResult.Duplicate(duplicates);
-        }
-
-        Asset asset;
+        (AssetWriteResult Result, int Id) created;
         try
         {
-            asset = Asset.Create(
-                draft.AssetCode,
-                draft.AssetType,
-                references.Model,
-                references.City,
-                references.Department,
-                references.Location,
-                draft.ComputerName,
-                draft.SerialNumber,
-                draft.Description);
-            if (draft.Status is { } status && status != asset.Status)
-            {
-                asset.ChangeStatus(status);
-            }
-        }
-        catch (DomainException ex)
-        {
-            return AssetWriteResult.Rule(ex.Code);
-        }
+            // Checks, insert and audit record are one unit, so a retried attempt starts again from the checks.
+            created = await db.InTransactionAsync(
+                async (transaction, token) =>
+                {
+                    var (references, errors) = await LoadReferencesAsync(draft, current: null, token).ConfigureAwait(false);
+                    if (errors.Count > 0)
+                    {
+                        return (AssetWriteResult.Invalid(errors), 0);
+                    }
 
-        try
-        {
-            await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
-            db.Assets.Add(asset);
+                    var duplicates = await FindDuplicatesAsync(draft, exceptAssetId: 0, token).ConfigureAwait(false);
+                    if (duplicates.Count > 0)
+                    {
+                        return (AssetWriteResult.Duplicate(duplicates), 0);
+                    }
 
-            // Saved first so the audit record can name the asset by its ID.
-            await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
-            Audit(asset, AuditAction.Created, oldValues: null, AssetAuditTrail.Serialize(AssetAuditTrail.Snapshot(asset)));
-            await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
-            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+                    Asset asset;
+                    try
+                    {
+                        asset = Asset.Create(
+                            draft.AssetCode,
+                            draft.AssetType,
+                            references.Model,
+                            references.City,
+                            references.Department,
+                            references.Location,
+                            draft.ComputerName,
+                            draft.SerialNumber,
+                            draft.Description);
+                        if (draft.Status is { } status && status != asset.Status)
+                        {
+                            asset.ChangeStatus(status);
+                        }
+                    }
+                    catch (DomainException ex)
+                    {
+                        return (AssetWriteResult.Rule(ex.Code), 0);
+                    }
+
+                    db.Assets.Add(asset);
+
+                    // Saved first so the audit record can name the asset by its ID.
+                    await db.SaveChangesAsync(token).ConfigureAwait(false);
+                    Audit(asset, AuditAction.Created, oldValues: null, AssetAuditTrail.Serialize(AssetAuditTrail.Snapshot(asset)));
+                    await db.SaveChangesAsync(token).ConfigureAwait(false);
+                    await transaction.CommitAsync(token).ConfigureAwait(false);
+                    LogCreated(asset.Id, asset.AssetCode);
+                    return (AssetWriteResult.Succeeded(null), asset.Id);
+                },
+                cancellationToken).ConfigureAwait(false);
         }
         catch (DbUpdateException ex) when (ex.IsUniqueKeyViolation())
         {
@@ -286,8 +294,9 @@ internal sealed partial class AssetStore(
             return AssetWriteResult.Duplicate(DuplicateField(ex));
         }
 
-        LogCreated(asset.Id, asset.AssetCode);
-        return AssetWriteResult.Succeeded(await FindAsync(asset.Id, cancellationToken).ConfigureAwait(false));
+        return created.Result.Outcome == AssetWriteOutcome.Succeeded
+            ? AssetWriteResult.Succeeded(await FindAsync(created.Id, cancellationToken).ConfigureAwait(false))
+            : created.Result;
     }
 
     public async Task<AssetWriteResult> UpdateAsync(int id, AssetDraft draft, byte[] rowVersion, CancellationToken cancellationToken)
@@ -301,7 +310,7 @@ internal sealed partial class AssetStore(
             return AssetWriteResult.NotFound;
         }
 
-        if (!MatchesClientVersion(asset, rowVersion))
+        if (!db.MatchesClientVersion(asset, rowVersion))
         {
             LogConflict(id);
             return AssetWriteResult.Conflict;
@@ -389,7 +398,7 @@ internal sealed partial class AssetStore(
             return AssetWriteResult.NotFound;
         }
 
-        if (!MatchesClientVersion(asset, rowVersion))
+        if (!db.MatchesClientVersion(asset, rowVersion))
         {
             LogConflict(id);
             return AssetWriteResult.Conflict;
@@ -550,18 +559,6 @@ internal sealed partial class AssetStore(
         }
 
         return errors;
-    }
-
-    /// <summary>
-    /// Whether the caller read the version just loaded; refusing here spares the work of a change that would fail.
-    /// The client's version also becomes the original value EF Core puts in the UPDATE's WHERE, so a change that
-    /// lands between this read and the save is caught by the database (<see cref="DbUpdateConcurrencyException"/>)
-    /// and nothing is overwritten.
-    /// </summary>
-    private bool MatchesClientVersion(Asset asset, byte[] rowVersion)
-    {
-        db.Entry(asset).Property(a => a.RowVersion).OriginalValue = rowVersion;
-        return asset.RowVersion.AsSpan().SequenceEqual(rowVersion);
     }
 
     private static Dictionary<string, string[]> DuplicateField(DbUpdateException exception)

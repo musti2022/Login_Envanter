@@ -4,7 +4,7 @@ using Microsoft.AspNetCore.Http.HttpResults;
 
 namespace EnterpriseInventory.Api.Assets;
 
-/// <summary>Turkish answers for business rules that refused a change to an asset (always <c>409</c>).</summary>
+/// <summary>Turkish answers for business rules that refused a change to an asset or its assignment (always <c>409</c>).</summary>
 internal static class AssetProblems
 {
     private static readonly Dictionary<string, (string Code, string Title, string Detail)> Rules = new()
@@ -33,6 +33,30 @@ internal static class AssetProblems
             "location_city_mismatch",
             "Seçilen lokasyon seçilen şehirde değil.",
             "Lokasyonu demirbaşın şehrinden seçin."),
+        [DomainErrors.Asset.AlreadyAssigned] = (
+            "asset_already_assigned",
+            "Demirbaş zaten bir çalışana zimmetli.",
+            "Başka bir zimmet kaydedilmiş olabilir. Sayfayı yenileyin; yeniden zimmetlemek için önce iadesini alın."),
+        [DomainErrors.Asset.NotAvailableForAssignment] = (
+            "asset_not_available",
+            "Yalnızca boşta olan demirbaş zimmetlenebilir.",
+            "Arızalı veya hurda demirbaşın durumunu önce Boşta olarak değiştirin."),
+        [DomainErrors.Asset.NotAssigned] = (
+            "asset_not_assigned",
+            "Demirbaş kimseye zimmetli değil.",
+            "İade edilecek bir zimmet yok; iade daha önce alınmış olabilir. Sayfayı yenileyin."),
+        [DomainErrors.Asset.AssignmentOverlapsHistory] = (
+            "assignment_overlaps_history",
+            "Zimmet tarihi önceki iadeden önce olamaz.",
+            "Sunucu saatini kontrol edin ve tekrar deneyin."),
+        [DomainErrors.Asset.ReturnBeforeAssignment] = (
+            "return_before_assignment",
+            "İade tarihi zimmet tarihinden önce olamaz.",
+            "Sunucu saatini kontrol edin ve tekrar deneyin."),
+        [DomainErrors.Employee.Inactive] = (
+            "employee_inactive",
+            "Çalışanın Active Directory hesabı pasif.",
+            "Pasif hesaplı çalışana demirbaş zimmetlenemez."),
     };
 
     public static ProblemHttpResult ForRule(string? ruleCode) =>

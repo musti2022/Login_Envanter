@@ -36,6 +36,7 @@ public static class DependencyInjection
             serviceProvider.GetRequiredService<TimeProvider>()));
         services.AddScoped<IUserSessionService, UserSessionService>();
         services.AddScoped<IAssetStore, AssetStore>();
+        services.AddScoped<IAssetAssignmentStore, AssetAssignmentStore>();
         services.AddScoped<IDashboardStore, DashboardStore>();
         services.AddScoped<ILookupStore, LookupStore>();
         services.AddDbContext<ApplicationDbContext>((serviceProvider, options) =>

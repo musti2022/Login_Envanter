@@ -17,9 +17,12 @@ public enum AssetWriteOutcome
 
     /// <summary>A business rule refused the change; <see cref="AssetWriteResult.RuleCode"/> is a <c>DomainErrors</c> code.</summary>
     RuleViolated = 5,
+
+    /// <summary>The directory, which had to confirm the employee, could not be reached; nothing was written.</summary>
+    DirectoryUnavailable = 6,
 }
 
-/// <summary>What happened to a create, update or archive. <see cref="Asset"/> is the asset as saved.</summary>
+/// <summary>What happened to a create, update, archive, assignment, return or move. <see cref="Asset"/> is the asset as saved.</summary>
 public sealed record AssetWriteResult(
     AssetWriteOutcome Outcome,
     AssetDetails? Asset = null,
@@ -35,6 +38,8 @@ public sealed record AssetWriteResult(
     public static AssetWriteResult NotFound { get; } = new(AssetWriteOutcome.NotFound);
 
     public static AssetWriteResult Conflict { get; } = new(AssetWriteOutcome.ConcurrencyConflict);
+
+    public static AssetWriteResult DirectoryUnavailable { get; } = new(AssetWriteOutcome.DirectoryUnavailable);
 
     public static AssetWriteResult Rule(string code) => new(AssetWriteOutcome.RuleViolated, RuleCode: code);
 }

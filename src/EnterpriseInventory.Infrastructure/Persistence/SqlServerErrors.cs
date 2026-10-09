@@ -11,4 +11,9 @@ internal static class SqlServerErrors
 
     public static bool IsUniqueKeyViolation(this DbUpdateException exception) =>
         exception.InnerException is SqlException { Number: DuplicateKeyInUniqueIndex or UniqueConstraintViolation };
+
+    /// <summary>A unique index or constraint with this name refused the change.</summary>
+    public static bool IsUniqueKeyViolation(this DbUpdateException exception, string indexName) =>
+        exception.IsUniqueKeyViolation()
+        && ((SqlException)exception.InnerException!).Message.Contains($"'{indexName}'", StringComparison.Ordinal);
 }
