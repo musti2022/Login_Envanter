@@ -1,0 +1,103 @@
+using EnterpriseInventory.Infrastructure.Persistence;
+using EnterpriseInventory.Infrastructure.Persistence.Interceptors;
+using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
+
+namespace EnterpriseInventory.IntegrationTests.Persistence;
+
+/// <summary>
+/// Creates a uniquely named database on the SQL Server given in <c>EI_TEST_SQL_CONNECTION</c>, applies the
+/// migrations to it and drops it when the tests finish. Without the variable the SQL Server tests are skipped.
+/// </summary>
+/// <remarks>
+/// The account in the connection string needs CREATE DATABASE; use it only against a test server. The database
+/// is created with the Turkish collation the application expects (see docs/database.md).
+/// </remarks>
+public sealed class SqlServerDatabaseFixture : IAsyncLifetime
+{
+    public const string ConnectionVariable = "EI_TEST_SQL_CONNECTION";
+    public const string Collation = "Turkish_CI_AS";
+    public const string DefaultUser = "test.admin";
+
+    public static string? ServerConnectionString =>
+        Environment.GetEnvironmentVariable(ConnectionVariable) is { Length: > 0 } value ? value : null;
+
+    public TestClock Clock { get; } = new(new DateTimeOffset(2026, 10, 9, 6, 0, 0, TimeSpan.Zero));
+
+    public string ConnectionString { get; private set; } = string.Empty;
+
+    public async Task InitializeAsync()
+    {
+        if (ServerConnectionString is null)
+        {
+            return;
+        }
+
+        var databaseName = $"EI_Test_{Guid.NewGuid():N}";
+        ConnectionString = new SqlConnectionStringBuilder(ServerConnectionString) { InitialCatalog = databaseName }.ConnectionString;
+
+        var master = new SqlConnectionStringBuilder(ServerConnectionString) { InitialCatalog = "master" };
+        await using (var connection = new SqlConnection(master.ConnectionString))
+        {
+            await connection.OpenAsync();
+            await using var command = connection.CreateCommand();
+#pragma warning disable CA2100 // The database name is generated above and the collation is a constant.
+            command.CommandText = $"CREATE DATABASE [{databaseName}] COLLATE {Collation}";
+#pragma warning restore CA2100
+            await command.ExecuteNonQueryAsync();
+        }
+
+        await using var context = CreateContext();
+        await context.Database.MigrateAsync();
+    }
+
+    public async Task DisposeAsync()
+    {
+        if (ConnectionString.Length == 0)
+        {
+            return;
+        }
+
+        await using var context = CreateContext();
+        await context.Database.EnsureDeletedAsync();
+    }
+
+    /// <summary>A new context whose saves are stamped with <paramref name="userName"/> and <see cref="Clock"/>.</summary>
+    public ApplicationDbContext CreateContext(string? userName = DefaultUser)
+    {
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseSqlServer(ConnectionString)
+            .AddInterceptors(new AuditableEntityInterceptor(new TestCurrentUser(userName), Clock))
+            .Options;
+        return new ApplicationDbContext(options);
+    }
+
+    /// <summary>Saves <paramref name="entity"/> and everything reachable from it in its own context.</summary>
+    public async Task<T> SaveAsync<T>(T entity, string? userName = DefaultUser)
+        where T : class
+    {
+        await using var context = CreateContext(userName);
+        context.Add(entity);
+        await context.SaveChangesAsync();
+        return entity;
+    }
+}
+
+/// <summary>Tests sharing one migrated database. They run one after another and each creates its own rows.</summary>
+[CollectionDefinition(Name)]
+public sealed class SqlServerTestGroup : ICollectionFixture<SqlServerDatabaseFixture>
+{
+    public const string Name = "SQL Server";
+}
+
+/// <summary>A fact that runs only when <c>EI_TEST_SQL_CONNECTION</c> points at a SQL Server.</summary>
+public sealed class SqlServerFactAttribute : FactAttribute
+{
+    public SqlServerFactAttribute()
+    {
+        if (SqlServerDatabaseFixture.ServerConnectionString is null)
+        {
+            Skip = $"{SqlServerDatabaseFixture.ConnectionVariable} is not set; SQL Server tests are skipped.";
+        }
+    }
+}

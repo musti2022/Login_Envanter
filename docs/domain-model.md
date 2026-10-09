@@ -23,7 +23,7 @@ Kod: `src/EnterpriseInventory.Domain`. Testler: `tests/EnterpriseInventory.UnitT
 - Seçilen lokasyon seçilen şehre ait olmalıdır.
 - Pasif marka, model, şehir, departman veya lokasyon yeni kayıtta seçilemez. Mevcut kayıtta zaten seçili olan pasif değer korunabilir.
 - AD hesabı pasif olan çalışana zimmet verilemez.
-- Boş seri numarası `null` olarak saklanır; benzersizlik dolu değerler için filtreli indeksle sağlanacak (4. gün).
+- Boş seri numarası `null` olarak saklanır; dolu değerlerin benzersizliği filtreli indeksle sağlanır (bkz. [`database.md`](database.md)).
 - Kurallar ihlal edildiğinde `DomainException` sabit bir kodla atılır (ör. `Asset.AlreadyAssigned`). API bu kodları Türkçe mesajlara çevirecek.
 
 ## Varsayımlar (gerekirse değiştirilebilir)

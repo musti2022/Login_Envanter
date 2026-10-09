@@ -4,7 +4,8 @@
 üzerinden LDAPS ile yapılır ve yalnızca `Bim_Envanter` güvenlik grubunun üyeleri uygulamaya girebilir.
 Proje gereksinimleri ve 40 günlük plan: [`proje_talimatlari.md`](proje_talimatlari.md).
 
-> **Durum:** 2. gün — solution iskeleti ve Türkçe arayüz kabuğu (menü, sayfalar, tema). Login, envanter ve zimmet modülleri henüz yok.
+> **Durum:** 4. gün — solution iskeleti, Türkçe arayüz kabuğu, domain modeli ve SQL Server şeması (EF Core migration,
+> RowVersion, kısıtlar). Login, envanter ve zimmet ekranları henüz yok.
 
 ## Teknolojiler
 
@@ -12,7 +13,7 @@ Proje gereksinimleri ve 40 günlük plan: [`proje_talimatlari.md`](proje_talimat
 | --- | --- |
 | Backend | .NET 10, ASP.NET Core Web API, Clean Architecture, FluentValidation, ProblemDetails, Serilog |
 | Frontend | React, TypeScript, Vite, Material UI, TanStack Query, React Hook Form + Zod, React Router, SignalR |
-| Veritabanı | Mevcut Microsoft SQL Server, EF Core Code First (sonraki aşamalarda) |
+| Veritabanı | Mevcut Microsoft SQL Server, EF Core Code First, migration, RowVersion |
 | Barındırma | Mevcut Windows Server + IIS, yalnızca intranet, HTTPS |
 
 ## Klasör yapısı
@@ -33,17 +34,20 @@ scripts/                               Yardımcı betikler
 deploy/                                IIS yayın dosyaları
 ```
 
-Katman bağımlılık kuralları için bkz. [`docs/architecture.md`](docs/architecture.md).
+Katman bağımlılık kuralları için bkz. [`docs/architecture.md`](docs/architecture.md); veritabanı tasarımı, migration
+komutları ve SQL hesap yetkileri için [`docs/database.md`](docs/database.md).
 
 ## Gereksinimler
 
 - .NET SDK 10.0.100 veya üstü (`global.json`)
 - Node.js 22 veya üstü, npm
+- SQL Server (geliştirme veritabanı ve SQL testleri için; SQL Server 2022 ile denendi)
 
 ## Derleme ve test
 
 ```bash
 # Backend
+dotnet tool restore
 dotnet build EnterpriseInventory.slnx
 dotnet test EnterpriseInventory.slnx
 
@@ -54,6 +58,9 @@ npm run build
 npm test
 npm run lint
 ```
+
+SQL Server testleri `EI_TEST_SQL_CONNECTION` tanımlı değilse atlanır (skipped). Bir test sunucusunda geçici bir
+veritabanı oluşturup silerler; ayrıntı için [`docs/database.md`](docs/database.md#testler).
 
 ## Geliştirme ortamında çalıştırma
 

@@ -1,5 +1,7 @@
 using System.Globalization;
+using EnterpriseInventory.Api.Security;
 using EnterpriseInventory.Application;
+using EnterpriseInventory.Application.Abstractions;
 using EnterpriseInventory.Infrastructure;
 using Serilog;
 
@@ -17,6 +19,8 @@ try
         .Enrich.FromLogContext());
 
     builder.Services.AddProblemDetails();
+    builder.Services.AddHttpContextAccessor();
+    builder.Services.AddScoped<ICurrentUser, HttpContextCurrentUser>();
     builder.Services.AddApplication();
     builder.Services.AddInfrastructure(builder.Configuration);
 
