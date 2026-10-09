@@ -50,7 +50,12 @@ try
 
     app.UseHttpsRedirection();
     app.UseMiddleware<SecurityHeadersMiddleware>();
-    app.UseSerilogRequestLogging(options => options.GetLevel = RequestLogLevel);
+    app.UseSerilogRequestLogging(options =>
+    {
+        // Without this the middleware writes to the static startup logger, which has no file sink.
+        options.Logger = app.Services.GetRequiredService<Serilog.ILogger>();
+        options.GetLevel = RequestLogLevel;
+    });
     app.UseAuthentication();
     app.UseRateLimiter();
     app.UseAuthorization();
@@ -70,9 +75,10 @@ finally
 }
 
 // Successful health probes run every few seconds; logging them at Verbose keeps them out of the normal log.
+// Rejected health requests (401, 403, 429) stay visible.
 static LogEventLevel RequestLogLevel(HttpContext context, double elapsedMilliseconds, Exception? exception) =>
     exception is not null || context.Response.StatusCode >= StatusCodes.Status500InternalServerError ? LogEventLevel.Error
-    : context.Request.Path.StartsWithSegments("/api/health") ? LogEventLevel.Verbose
+    : context.Request.Path.StartsWithSegments("/api/health") && context.Response.StatusCode < StatusCodes.Status400BadRequest ? LogEventLevel.Verbose
     : LogEventLevel.Information;
 
 // Exposed for WebApplicationFactory in integration tests.

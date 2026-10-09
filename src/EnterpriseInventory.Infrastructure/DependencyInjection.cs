@@ -31,6 +31,8 @@ public static class DependencyInjection
             options.AddInterceptors(serviceProvider.GetRequiredService<AuditableEntityInterceptor>());
         });
 
+        // A singleton, so concurrent probes share one database check (see DatabaseHealthCheck).
+        services.AddSingleton<DatabaseHealthCheck>();
         services.AddHealthChecks()
             .AddCheck<DatabaseHealthCheck>("database", tags: [HealthCheckTags.Ready], timeout: TimeSpan.FromSeconds(5));
 

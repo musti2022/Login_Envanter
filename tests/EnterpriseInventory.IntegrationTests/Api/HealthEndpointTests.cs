@@ -53,6 +53,36 @@ public class HealthEndpointTests
     }
 
     [Fact]
+    public async Task Readiness_probes_share_one_database_check_for_a_few_seconds()
+    {
+        // A server that drops every connection: each database check costs exactly one connection attempt.
+        // The anonymous probe must not open a connection per request, or a flood of probes during an outage
+        // would tie up a thread each.
+        using var droppingServer = new TcpListener(IPAddress.Loopback, 0);
+        droppingServer.Start();
+        var connections = 0;
+        _ = Task.Run(async () =>
+        {
+            while (true)
+            {
+                using var connection = await droppingServer.AcceptTcpClientAsync();
+                Interlocked.Increment(ref connections);
+            }
+        });
+        var port = ((IPEndPoint)droppingServer.LocalEndpoint).Port;
+        await using var api = new TestApiFactory($"Server=127.0.0.1,{port};Database=none;Connect Timeout=5;Encrypt=false;Pooling=false");
+        using var client = api.CreateAnonymousClient();
+        var ready = new Uri("/api/health/ready", UriKind.Relative);
+
+        var concurrent = await Task.WhenAll(Enumerable.Range(0, 5).Select(_ => client.GetAsync(ready)));
+        using var afterwards = await client.GetAsync(ready);
+
+        Assert.All(concurrent.Append(afterwards), response => Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode));
+        Assert.Equal(1, Volatile.Read(ref connections));
+        Array.ForEach(concurrent, response => response.Dispose());
+    }
+
+    [Fact]
     public async Task Details_require_an_administrator()
     {
         await using var api = new TestApiFactory();

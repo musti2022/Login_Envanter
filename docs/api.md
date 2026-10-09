@@ -14,11 +14,14 @@ Kod: `src/EnterpriseInventory.Api`. Testler: `tests/EnterpriseInventory.Integrat
   Ayrıntı sunucu loguna yazılır.
 - Migration uygulanmadan yayınlanan bir sürüm `ready` kontrolünde `503` döner (eksik migration adları
   `/api/health` yanıtında görünür).
-- Veritabanı kontrolü en fazla 5 saniye sürer. SQL Server kapatıldığında `ready` 5 saniyede `503`
+- Veritabanı kontrolü en fazla 5 saniye bekler. SQL Server kapatıldığında `ready` 5 saniyede `503`
   döndü; SQL Server yeniden açılınca kendiliğinden `200`'e döndü.
+- `ready` anonim olduğu için veritabanı aynı anda yalnızca bir kez kontrol edilir ve sonuç, kontrol
+  başladıktan sonra 5 saniye boyunca tekrar kullanılır. Çok sayıda yoklama veritabanına yük bindiremez;
+  buna karşılık durum değişikliği en geç birkaç saniye gecikmeyle görünür.
 - Runtime hesabı (`ei_app_runtime` rolü) ile `ready` kontrolü çalışır; ek yetki gerekmez.
 - IIS veya izleme aracı `ready` adresini yoklayabilir. Başarılı yoklamalar logu doldurmasın diye Verbose
-  seviyesinde loglanır.
+  seviyesinde loglanır; reddedilen (`401`, `403`, `429`) ve başarısız (`5xx`) istekler normal logda kalır.
 - Active Directory (LDAPS) kontrolü 6. günde `ready` kontrolüne eklenecek.
 
 ## Yetkilendirme: varsayılan olarak kapalı
