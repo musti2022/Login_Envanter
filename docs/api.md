@@ -1,6 +1,7 @@
 # API altyapısı (5. gün), giriş (7–8. gün) ve oturum (9. gün)
 
-Kod: `src/EnterpriseInventory.Api`. Testler: `tests/EnterpriseInventory.IntegrationTests/Api`.
+Kod: `src/EnterpriseInventory.Api`. Testler: `tests/EnterpriseInventory.IntegrationTests/Api`. Demirbaş uç
+noktaları (11–15. gün) ayrı dokümanda: [`assets-api.md`](assets-api.md).
 
 ## Health endpoint'leri
 
@@ -95,8 +96,10 @@ Tüm hatalar RFC 7807 ProblemDetails (`application/problem+json`) biçimindedir:
   Bir endpoint kendi başlığını verirse o korunur.
 - Beklenmeyen hatalarda `500` ve "Beklenmeyen bir hata oluştu." döner; exception mesajı ve stack trace
   yanıta yazılmaz, yalnızca loglanır.
-- Alan doğrulama hataları (12. gün), domain kuralı ihlalleri ve RowVersion çakışmasında `409` (13. gün)
-  ilgili endpoint'lerle birlikte eklenecek.
+- Alan doğrulama hataları `400` ValidationProblem olarak `errors` nesnesinde alan adıyla (camelCase) ve Türkçe
+  mesajla döner. Domain kuralı ihlalleri ve RowVersion çakışması `409` ve ayırt edici bir `code` alır
+  (`concurrency_conflict`, `duplicate_value`, `asset_archived` …); liste:
+  [`assets-api.md`](assets-api.md#hata-kodları).
 
 ## Correlation ID
 
