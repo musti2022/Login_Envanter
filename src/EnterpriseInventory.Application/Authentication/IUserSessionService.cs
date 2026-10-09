@@ -20,6 +20,13 @@ public interface IUserSessionService
     /// </summary>
     Task<SessionValidationResult> ValidateAsync(string sessionKey, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Checks the session like <see cref="ValidateAsync"/> without counting it as the user's activity: for traffic the
+    /// user did not cause, such as an open live connection or a background refresh. Timeouts and the directory
+    /// re-check still end the session, so such traffic can neither keep an idle session alive nor outlast lost access.
+    /// </summary>
+    Task<SessionValidationResult> CheckAsync(string sessionKey, CancellationToken cancellationToken);
+
     /// <summary>Ends the session at the user's request and audits the sign-out.</summary>
     Task EndAsync(string sessionKey, CancellationToken cancellationToken);
 }

@@ -7,6 +7,7 @@ using EnterpriseInventory.Api.Employees;
 using EnterpriseInventory.Api.Health;
 using EnterpriseInventory.Api.Http;
 using EnterpriseInventory.Api.Lookups;
+using EnterpriseInventory.Api.Realtime;
 using EnterpriseInventory.Api.Security;
 using EnterpriseInventory.Application;
 using EnterpriseInventory.Application.Abstractions;
@@ -45,6 +46,8 @@ try
     builder.Services.AddHttpContextAccessor();
     builder.Services.AddScoped<ICurrentUser, HttpContextCurrentUser>();
     builder.Services.AddScoped<IRequestContext, HttpRequestContext>();
+    builder.Services.AddScoped<BackgroundOperation>();
+    builder.Services.AddRealtime();
     builder.Services.AddApplication();
     builder.Services.AddInfrastructure(builder.Configuration);
 
@@ -76,6 +79,9 @@ try
         options.Logger = app.Services.GetRequiredService<Serilog.ILogger>();
         options.GetLevel = RequestLogLevel;
     });
+
+    // Before authentication: a hub request from another site is refused before its cookie is even looked at.
+    app.UseMiddleware<SameOriginHubMiddleware>();
     app.UseAuthentication();
     app.UseRateLimiter();
     app.UseAuthorization();
@@ -89,6 +95,7 @@ try
     app.MapDashboardEndpoints();
     app.MapLookupEndpoints();
     app.MapEmployeeEndpoints();
+    app.MapRealtime();
 
     await app.RunAsync();
 }

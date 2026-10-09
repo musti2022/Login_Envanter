@@ -13,6 +13,8 @@ Kod: `src/EnterpriseInventory.Domain/Users/UserSession.cs`, `src/EnterpriseInven
 - **Her istekte** çerezdeki oturum veritabanında kontrol edilir. Oturum bitmişse çerez reddedilir ve silinir
   (`401`). Geçerli şifrelenmiş bir çerez bile, arkasında açık bir oturum yoksa kabul edilmez.
 - Kullanıcının son işlem zamanı en fazla dakikada bir yazılır; isteklerin çoğu yalnızca okur.
+- Canlı bildirim bağlantısının istekleri (`/hubs`) işlem sayılmaz; açık bağlantılar oturum bitince kapanır
+  (bkz. [`realtime.md`](realtime.md)).
 - Oturum açılışı, `AdminUsers` güncellemesi ve `SignedIn` audit kaydı tek transaction'dadır. Kaydedilemezse
   oturum açılmaz (`503 sign_in_unavailable`).
 

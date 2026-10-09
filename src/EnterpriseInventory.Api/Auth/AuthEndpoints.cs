@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Security.Claims;
 using EnterpriseInventory.Api.Http;
+using EnterpriseInventory.Api.Realtime;
 using EnterpriseInventory.Api.Security;
 using EnterpriseInventory.Application.Authentication;
 using Microsoft.AspNetCore.Antiforgery;
@@ -112,11 +113,15 @@ internal static class AuthEndpoints
         return TypedResults.Ok(CurrentUser(principal) with { CsrfToken = csrfToken });
     }
 
-    private static async Task<NoContent> LogoutAsync(HttpContext httpContext, IUserSessionService sessions, CancellationToken cancellationToken)
+    private static async Task<NoContent> LogoutAsync(
+        HttpContext httpContext, IUserSessionService sessions, HubConnectionRegistry liveConnections, CancellationToken cancellationToken)
     {
         if (httpContext.User.FindFirstValue(AppClaimTypes.SessionKey) is { } key)
         {
             await sessions.EndAsync(key, cancellationToken);
+
+            // The session's open live connections end with it, not at the next check.
+            liveConnections.Close(key);
         }
 
         await httpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);

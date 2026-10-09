@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using EnterpriseInventory.Application.Authentication;
+using EnterpriseInventory.Api.Realtime;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 
@@ -17,13 +18,22 @@ internal sealed class SessionCookieEvents(IUserSessionService sessions) : Cookie
         ArgumentNullException.ThrowIfNull(context);
 
         var key = context.Principal?.FindFirstValue(AppClaimTypes.SessionKey);
-        var result = key is null ? null : await sessions.ValidateAsync(key, context.HttpContext.RequestAborted);
+        var cancellationToken = context.HttpContext.RequestAborted;
+        var result = key is null ? null
+            : IsActivity(context.Request) ? await sessions.ValidateAsync(key, cancellationToken)
+            : await sessions.CheckAsync(key, cancellationToken);
         if (result is not { IsValid: true })
         {
             context.RejectPrincipal();
             await context.HttpContext.SignOutAsync(context.Scheme.Name);
         }
     }
+
+    /// <summary>
+    /// Whether the request is the user's own doing. The live connection's traffic is not: an open page must not keep
+    /// an idle session alive.
+    /// </summary>
+    private static bool IsActivity(HttpRequest request) => !request.Path.StartsWithSegments(SameOriginHubMiddleware.HubsPath);
 
     // An API answers with status codes instead of redirecting to a login page.
     public override Task RedirectToLogin(RedirectContext<CookieAuthenticationOptions> context) =>

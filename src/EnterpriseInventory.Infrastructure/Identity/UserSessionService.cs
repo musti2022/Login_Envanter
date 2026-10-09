@@ -82,7 +82,13 @@ internal sealed partial class UserSessionService(
         return new StartedSession(key, session.ExpiresAt);
     }
 
-    public async Task<SessionValidationResult> ValidateAsync(string sessionKey, CancellationToken cancellationToken)
+    public Task<SessionValidationResult> ValidateAsync(string sessionKey, CancellationToken cancellationToken) =>
+        EvaluateAsync(sessionKey, recordActivity: true, cancellationToken);
+
+    public Task<SessionValidationResult> CheckAsync(string sessionKey, CancellationToken cancellationToken) =>
+        EvaluateAsync(sessionKey, recordActivity: false, cancellationToken);
+
+    private async Task<SessionValidationResult> EvaluateAsync(string sessionKey, bool recordActivity, CancellationToken cancellationToken)
     {
         var session = await FindAsync(sessionKey, cancellationToken).ConfigureAwait(false);
         if (session is null)
@@ -128,7 +134,11 @@ internal sealed partial class UserSessionService(
                 break;
         }
 
-        session.RecordActivity(now);
+        if (recordActivity)
+        {
+            session.RecordActivity(now);
+        }
+
         await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         return SessionValidationResult.Valid;
     }

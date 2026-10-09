@@ -191,6 +191,9 @@ public class SignInHandlerTests
         public Task<SessionValidationResult> ValidateAsync(string sessionKey, CancellationToken cancellationToken) =>
             throw new NotSupportedException();
 
+        public Task<SessionValidationResult> CheckAsync(string sessionKey, CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
         public Task EndAsync(string sessionKey, CancellationToken cancellationToken) => throw new NotSupportedException();
     }
 
