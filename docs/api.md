@@ -1,4 +1,4 @@
-# API altyapısı (5. gün)
+# API altyapısı (5. gün) ve giriş (7–8. gün)
 
 Kod: `src/EnterpriseInventory.Api`. Testler: `tests/EnterpriseInventory.IntegrationTests/Api`.
 
@@ -22,20 +22,44 @@ Kod: `src/EnterpriseInventory.Api`. Testler: `tests/EnterpriseInventory.Integrat
 - Runtime hesabı (`ei_app_runtime` rolü) ile `ready` kontrolü çalışır; ek yetki gerekmez.
 - IIS veya izleme aracı `ready` adresini yoklayabilir. Başarılı yoklamalar logu doldurmasın diye Verbose
   seviyesinde loglanır; reddedilen (`401`, `403`, `429`) ve başarısız (`5xx`) istekler normal logda kalır.
-- Active Directory (LDAPS) kontrolü 6. günde `ready` kontrolüne eklenecek.
+- Active Directory (LDAPS) kontrolü yalnızca `/api/health` içinde `active-directory` adıyla görünür ve sorun
+  varsa `Degraded` olur; `ready` kontrolüne dahil değildir. AD kesintisinde açık oturumlar çalışmaya devam eder,
+  yeni girişler reddedilir (bkz. [`active-directory.md`](active-directory.md#health-kontrolü)).
 
 ## Yetkilendirme: varsayılan olarak kapalı
 
 - Her endpoint, ayrıca belirtilmedikçe **oturum açmış ve `Administrator` rolüne sahip** kullanıcı ister
   (fallback policy). Hiçbir endpoint'e uymayan istekler de buna dahildir: oturumsuz istek, adres var olmasa
   bile `401` alır.
-- Anonim erişim yalnızca `AllowAnonymous` ile açılır. Şu an yalnızca `live` ve `ready` anonimdir; bir test
-  bu listeyi denetler, yeni bir anonim endpoint eklenirse test kırılır.
+- Anonim erişim yalnızca `AllowAnonymous` ile açılır. Şu an yalnızca `live`, `ready` ve `POST /api/auth/login`
+  anonimdir; bir test bu listeyi denetler, yeni bir anonim endpoint eklenirse test kırılır.
 - API giriş sayfasına yönlendirmez; oturum yoksa `401`, yetki yoksa `403` döner.
-- Oturum çerezi `__Host-EnterpriseInventory`: HttpOnly, Secure, SameSite=Strict. Girişin kendisi, oturum
-  süresi, çıkış ve CSRF koruması 7–9. günlerde eklenecek. Şu an hiç çerez verilmez.
+- Oturum çerezi `__Host-EnterpriseInventory`: HttpOnly, Secure, SameSite=Strict, kalıcı değil, 20 dakika
+  işlem yapılmazsa geçersiz. Yalnızca girişte `Bim_Envanter` üyelerine verilir (aşağıya bakın). Sunucu taraflı
+  oturum, çıkış ve CSRF koruması 9. günde eklenecek.
 - React sayfaları API'den sunulmaya başlandığında (giriş ekranı dahil) statik dosyalar ayrıca anonim
   erişime açılacak.
+
+## Giriş: `POST /api/auth/login`
+
+Anonim, yalnızca JSON (`application/json`, en fazla 8 KB), istemci adresi başına deneme limitli.
+
+```json
+{ "userName": "ayse.yilmaz", "password": "…" }
+```
+
+| Durum | Yanıt | `code` |
+| --- | --- | --- |
+| Başarılı (`Bim_Envanter` üyesi) | `200` `{ "userName", "displayName", "roles": ["Administrator"] }` ve oturum çerezi | — |
+| Eksik/hatalı alan | `400` ValidationProblem, alan bazında Türkçe mesaj (`errors.userName`, `errors.password`) | — |
+| Kullanıcı adı veya parola hatalı | `401` "Kullanıcı adı veya parola hatalı." | `invalid_credentials` |
+| Hesap pasif, kilitli, süresi dolmuş, parola değişmeli | `403` "Hesabınızla şu anda giriş yapılamıyor." | `account_unavailable` |
+| Grup üyesi değil | `403` "Bu uygulamaya giriş yetkiniz yok." | `not_authorized` |
+| AD'ye ulaşılamıyor | `503` "Giriş şu anda yapılamıyor." | `directory_unavailable` |
+| Deneme limiti aşıldı | `429` ve `Retry-After` | — |
+
+Ret yanıtlarında çerez verilmez. Akışın ayrıntısı, AD hata kodları ve grup politikası:
+[`active-directory.md`](active-directory.md#giriş-7-gün).
 
 ## Hata yanıtları
 
@@ -83,7 +107,8 @@ Başka bir origin'den gelen isteklere `Access-Control-Allow-Origin` verilmez, ta
 - Kullanıcı başına (oturum yoksa istemci adresi başına) sabit pencere: varsayılan **60 saniyede 300 istek**.
 - Aşılınca `429`, `Retry-After` başlığı ve Türkçe ProblemDetails döner.
 - Ayar: `RateLimiting:PermitLimit`, `RateLimiting:WindowSeconds`. Geçersiz değerle uygulama başlamaz.
-- Giriş denemeleri için daha sıkı limit 7. günde eklenecek.
+- Giriş denemeleri (`POST /api/auth/login`) için ayrıca istemci adresi başına **60 saniyede 10 deneme**
+  (`RateLimiting:LoginPermitLimit`, `RateLimiting:LoginWindowSeconds`).
 - Uygulamanın önüne tüm kullanıcıları tek adresten geçiren bir ters proxy konursa anonim limit herkes için
   ortak olur; o durumda `ForwardedHeaders` yapılandırılmalıdır.
 

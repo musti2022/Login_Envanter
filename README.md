@@ -4,9 +4,12 @@
 üzerinden LDAPS ile yapılır ve yalnızca `Bim_Envanter` güvenlik grubunun üyeleri uygulamaya girebilir.
 Proje gereksinimleri ve 40 günlük plan: [`proje_talimatlari.md`](proje_talimatlari.md).
 
-> **Durum:** 5. gün — solution iskeleti, Türkçe arayüz kabuğu, domain modeli, SQL Server şeması (EF Core migration,
-> RowVersion, kısıtlar) ve API altyapısı (health endpoint'leri, varsayılan olarak kapalı yetkilendirme, hata yanıtları,
-> güvenlik başlıkları, rate limiting). Login, envanter ve zimmet ekranları henüz yok.
+> **Durum:** 8. gün — solution iskeleti, Türkçe arayüz kabuğu, domain modeli, SQL Server şeması (EF Core migration,
+> RowVersion, kısıtlar), API altyapısı (health endpoint'leri, varsayılan olarak kapalı yetkilendirme, hata yanıtları,
+> güvenlik başlıkları, rate limiting), Active Directory LDAPS bağlantısı (sıkı TLS sertifika doğrulaması) ve giriş API'si
+> (AD parola doğrulaması, `Bim_Envanter` grup SID kontrolü, oturum çerezi, giriş audit kaydı). AD entegrasyonu Samba
+> test domain'i ile test edildi; şirketin gerçek AD'si ile henüz denenmedi. Giriş ekranı, envanter ve zimmet ekranları
+> henüz yok.
 
 ## Teknolojiler
 
@@ -37,7 +40,8 @@ deploy/                                IIS yayın dosyaları
 
 Katman bağımlılık kuralları için bkz. [`docs/architecture.md`](docs/architecture.md); veritabanı tasarımı, migration
 komutları ve SQL hesap yetkileri için [`docs/database.md`](docs/database.md); health endpoint'leri, yetkilendirme, hata
-yanıtları ve güvenlik başlıkları için [`docs/api.md`](docs/api.md).
+yanıtları, güvenlik başlıkları ve giriş API'si için [`docs/api.md`](docs/api.md); Active Directory LDAPS bağlantısı,
+sertifika doğrulaması, giriş akışı ve grup yetkisi için [`docs/active-directory.md`](docs/active-directory.md).
 
 ## Gereksinimler
 
@@ -63,6 +67,10 @@ npm run lint
 
 SQL Server testleri `EI_TEST_SQL_CONNECTION` tanımlı değilse atlanır (skipped). Bir test sunucusunda geçici bir
 veritabanı oluşturup silerler; ayrıntı için [`docs/database.md`](docs/database.md#testler).
+
+Active Directory testleri `EI_TEST_AD_SERVER` tanımlı değilse atlanır. Gerçek bir LDAPS sunucusuyla denemek için
+Samba ile geçici bir test domain'i kurulabilir: [`scripts/test-ad`](scripts/test-ad/README.md). Ayrıntı:
+[`docs/active-directory.md`](docs/active-directory.md).
 
 ## Geliştirme ortamında çalıştırma
 
@@ -100,14 +108,22 @@ belli değildir ve **repoya hiçbir gizli değer eklenmez**.
 | Anahtar | Açıklama |
 | --- | --- |
 | `ConnectionStrings:DefaultConnection` | SQL Server bağlantısı (en az yetkili runtime hesabı) |
-| `ActiveDirectory:Domain` | AD domain adı |
-| `ActiveDirectory:ServerFqdn` | LDAPS sunucusunun FQDN'i (sertifikadaki adla aynı olmalı) |
-| `ActiveDirectory:Port` / `UseLdaps` | Varsayılan 636 / `true`; sertifika doğrulaması kapatılamaz |
-| `ActiveDirectory:BaseDn` | Arama kökü, ör. `DC=ornek,DC=local` |
+| `ActiveDirectory:Mode` | `Ldap`; `Fake` (sahte dizin) yalnızca Development'ta kabul edilir |
+| `ActiveDirectory:FakeUsers` | Yalnızca Development: sahte dizinin kullanıcıları, yalnızca `user-secrets` ile ([ayrıntı](docs/active-directory.md#geliştirme-ortamı-sahte-dizin)) |
+| `ActiveDirectory:Domain` | AD domain'inin DNS adı |
+| `ActiveDirectory:ServerFqdn` | LDAPS sunucusunun FQDN'i (sertifikadaki adla aynı olmalı; IP kabul edilmez) |
+| `ActiveDirectory:Port` / `UseLdaps` | Varsayılan 636 / `true`; düz LDAP ile uygulama başlamaz, sertifika doğrulaması kapatılamaz |
+| `ActiveDirectory:BaseDn` | Arama kökü, ör. `DC=ornek,DC=local` (domain'in içinde olmalı) |
 | `ActiveDirectory:AllowedGroupSid` | `Bim_Envanter` grubunun SID'i (yetki kontrolü isim değil SID üzerinden yapılır) |
-| `ActiveDirectory:NestedGroupPolicy` | İç içe grup politikası; varsayılan `DirectMembershipOnly` |
-| `ActiveDirectory:ServiceAccountUserName` / `ServiceAccountPassword` | Çalışan araması için servis hesabı |
+| `ActiveDirectory:NestedGroupPolicy` | İç içe grup politikası; açıkça yazılmalı, örnek ayarlarda `DirectMembershipOnly` |
+| `ActiveDirectory:ServiceAccountUserName` / `ServiceAccountPassword` | Yetki tekrar kontrolü ve çalışan araması için servis hesabı |
+| `ActiveDirectory:TrustedCaCertificatePath` | İsteğe bağlı; doluysa DC sertifikası yalnızca bu CA'ya zincirlenmeli |
+| `ActiveDirectory:CheckCertificateRevocation` | Sertifika iptal kontrolü; varsayılan `true` |
 | `RateLimiting:PermitLimit` / `WindowSeconds` | Kullanıcı başına istek limiti; varsayılan 60 saniyede 300 |
+| `RateLimiting:LoginPermitLimit` / `LoginWindowSeconds` | IP başına giriş denemesi limiti; varsayılan 60 saniyede 10 |
+
+AD ayarları uygulama başlarken denetlenir; eksik, hatalı veya `CHANGE-ME` içeren değerlerle uygulama başlamaz
+(bkz. [`docs/active-directory.md`](docs/active-directory.md#ayarlar-ve-başlangıç-denetimi)).
 
 Değerler şu yollarla verilir:
 

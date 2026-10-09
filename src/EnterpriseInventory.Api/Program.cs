@@ -1,4 +1,5 @@
 using System.Globalization;
+using EnterpriseInventory.Api.Auth;
 using EnterpriseInventory.Api.Health;
 using EnterpriseInventory.Api.Http;
 using EnterpriseInventory.Api.Security;
@@ -33,6 +34,7 @@ try
     builder.Services.AddApiRateLimiting(builder.Configuration);
     builder.Services.AddHttpContextAccessor();
     builder.Services.AddScoped<ICurrentUser, HttpContextCurrentUser>();
+    builder.Services.AddScoped<IRequestContext, HttpRequestContext>();
     builder.Services.AddApplication();
     builder.Services.AddInfrastructure(builder.Configuration);
 
@@ -61,6 +63,7 @@ try
     app.UseAuthorization();
 
     app.MapApiHealthChecks();
+    app.MapAuthEndpoints();
 
     await app.RunAsync();
 }

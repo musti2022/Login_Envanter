@@ -15,8 +15,10 @@ Testler: `tests/EnterpriseInventory.IntegrationTests/Persistence`.
   `AdminUsers` yalnızca giriş bilgisini tutar, orada son yazan kazanır; `AuditLogs` değiştirilmez.
 - **Audit alanları:** `CreatedAt/By`, `UpdatedAt/By` kayıt sırasında `AuditableEntityInterceptor` tarafından
   oturum açmış kullanıcıyla doldurulur. Saatler UTC'dir. Oturum açmış kullanıcı yoksa audit alanı olmayan
-  tablolar dahil hiçbir değişiklik kaydedilmez (anonim yazma yok). Giriş sırasında `AdminUsers` kaydı
-  yazılacağı için login akışı (7–8. gün) giriş yapan kullanıcıyı bu kontrole tanıtacak.
+  tablolar dahil hiçbir değişiklik kaydedilmez (anonim yazma yok). Tek istisna girişin kendisidir: AD parolayı
+  ve grup üyeliğini doğruladıktan sonra `AdminUserStore`, yalnızca o kaydetme işlemi için giriş yapan kullanıcıyı
+  kaydedici olarak tanıtır (`SignInIdentity`). `AdminUsers` kaydı ve `AuditLogs`'daki `SignedIn` satırı aynı
+  transaction'da yazılır.
 - **Silme yok:** Tüm ilişkiler `ON DELETE NO ACTION`. Demirbaş arşivlenir (`IsDeleted`), zimmet geçmişi ve
   tanımlar silinmez. Arşivlenen kayıtlar için global sorgu filtresi yoktur; listeler `IsDeleted = 0`
   koşulunu kendisi ekler, böylece geçmiş ve raporlar arşivi görmeye devam eder.

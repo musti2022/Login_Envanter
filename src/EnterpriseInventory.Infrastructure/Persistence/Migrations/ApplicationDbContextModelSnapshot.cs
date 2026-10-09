@@ -233,7 +233,7 @@ namespace EnterpriseInventory.Infrastructure.Persistence.Migrations
 
                     b.ToTable("AuditLogs", t =>
                         {
-                            t.HasCheckConstraint("CK_AuditLogs_Action", "[Action] IN (1, 2, 3, 4, 5, 6, 7)");
+                            t.HasCheckConstraint("CK_AuditLogs_Action", "[Action] IN (1, 2, 3, 4, 5, 6, 7, 8, 9, 10)");
 
                             t.HasCheckConstraint("CK_AuditLogs_HasValues", "[OldValues] IS NOT NULL OR [NewValues] IS NOT NULL");
                         });

@@ -5,6 +5,8 @@ using EnterpriseInventory.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Hosting.Internal;
 
 namespace EnterpriseInventory.IntegrationTests.Persistence;
 
@@ -47,8 +49,10 @@ public class AppliedMigrationTests(SqlServerDatabaseFixture database)
             .Build();
         var services = new ServiceCollection();
         services.AddLogging();
+        services.AddSingleton<IHostEnvironment>(new HostingEnvironment { EnvironmentName = Environments.Production });
         services.AddSingleton<TimeProvider>(database.Clock);
         services.AddScoped<ICurrentUser>(_ => new TestCurrentUser("di.admin"));
+        services.AddScoped<IRequestContext>(_ => new TestRequestContext());
         services.AddInfrastructure(configuration);
 
         await using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true });

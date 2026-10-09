@@ -14,16 +14,33 @@ namespace EnterpriseInventory.IntegrationTests.Api;
 
 /// <summary>
 /// Hosts the real API in memory. A request carrying <see cref="TestAuthHandler.UserHeader"/> is treated as
-/// signed in; challenges and forbids still go through the API's own cookie scheme.
+/// signed in; challenges and forbids still go through the API's own cookie scheme. With
+/// <c>useTestAuthentication: false</c> only the API's real cookie sign-in applies.
 /// </summary>
 public sealed class TestApiFactory(
     string? connectionString = TestApiFactory.UnreachableDatabase,
     string environment = "Development",
     IReadOnlyDictionary<string, string?>? settings = null,
-    Action<IApplicationBuilder>? appendToPipeline = null) : WebApplicationFactory<Program>
+    Action<IApplicationBuilder>? appendToPipeline = null,
+    bool useTestAuthentication = true) : WebApplicationFactory<Program>
 {
     /// <summary>A server name that cannot resolve, so database checks fail fast without SQL Server.</summary>
     public const string UnreachableDatabase = "Server=unreachable.invalid;Database=none;Connect Timeout=1";
+
+    /// <summary>
+    /// Valid directory settings for a domain controller that cannot resolve (".invalid" never does), so the
+    /// API starts in every environment; tests that need a directory override these keys.
+    /// </summary>
+    public static readonly IReadOnlyDictionary<string, string?> UnreachableDirectory = new Dictionary<string, string?>
+    {
+        ["ActiveDirectory:Mode"] = "Ldap",
+        ["ActiveDirectory:Domain"] = "unreachable.invalid",
+        ["ActiveDirectory:ServerFqdn"] = "dc1.unreachable.invalid",
+        ["ActiveDirectory:BaseDn"] = "DC=unreachable,DC=invalid",
+        ["ActiveDirectory:AllowedGroupSid"] = "S-1-5-21-1-2-3-1105",
+        ["ActiveDirectory:NestedGroupPolicy"] = "DirectMembershipOnly",
+        ["ActiveDirectory:ConnectTimeoutSeconds"] = "2",
+    };
 
     public HttpClient CreateAnonymousClient() => CreateClient(new WebApplicationFactoryClientOptions
     {
@@ -44,16 +61,25 @@ public sealed class TestApiFactory(
         builder.UseEnvironment(environment);
         builder.ConfigureAppConfiguration((_, configuration) =>
         {
-            var values = new Dictionary<string, string?>(settings ?? new Dictionary<string, string?>())
+            var values = new Dictionary<string, string?>(UnreachableDirectory)
             {
                 ["ConnectionStrings:DefaultConnection"] = connectionString,
             };
+            foreach (var (key, value) in settings ?? new Dictionary<string, string?>())
+            {
+                values[key] = value;
+            }
+
             configuration.AddInMemoryCollection(values);
         });
         builder.ConfigureTestServices(services =>
         {
-            services.AddAuthentication(options => options.DefaultAuthenticateScheme = TestAuthHandler.SchemeName)
-                .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(TestAuthHandler.SchemeName, _ => { });
+            if (useTestAuthentication)
+            {
+                services.AddAuthentication(options => options.DefaultAuthenticateScheme = TestAuthHandler.SchemeName)
+                    .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(TestAuthHandler.SchemeName, _ => { });
+            }
+
             if (appendToPipeline is not null)
             {
                 services.AddSingleton<IStartupFilter>(new AppendToPipeline(appendToPipeline));

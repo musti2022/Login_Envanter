@@ -3,7 +3,10 @@ using System.Net;
 using System.Net.Sockets;
 using System.Net.Http.Json;
 using System.Text.Json;
+using EnterpriseInventory.Infrastructure.Persistence;
 using EnterpriseInventory.IntegrationTests.Persistence;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace EnterpriseInventory.IntegrationTests.Api;
 
@@ -148,6 +151,8 @@ public class DatabaseHealthTests(SqlServerDatabaseFixture database)
 
         Assert.Equal(HttpStatusCode.ServiceUnavailable, ready.StatusCode);
         var check = HealthEndpointTests.HealthCheck(await details.Content.ReadFromJsonAsync<JsonElement>(), "database");
-        Assert.StartsWith("1 migration(s) not applied: ", check.GetProperty("description").GetString(), StringComparison.Ordinal);
+        using var scope = api.Services.CreateScope();
+        var migrations = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>().Database.GetMigrations().Count();
+        Assert.StartsWith($"{migrations} migration(s) not applied: ", check.GetProperty("description").GetString(), StringComparison.Ordinal);
     }
 }

@@ -11,8 +11,8 @@ internal static class SecurityServiceCollectionExtensions
     /// explicitly with <c>AllowAnonymous</c>.
     /// </summary>
     /// <remarks>
-    /// Sign-in, session lifetime, logout and CSRF protection are added with the login (days 7-9). Until then
-    /// no cookie is ever issued, so every protected request is answered with 401.
+    /// The cookie is issued by <c>POST /api/auth/login</c> only to members of the allowed group. Server-side
+    /// sessions, logout and CSRF protection are added on day 9.
     /// </remarks>
     public static IServiceCollection AddApiSecurity(this IServiceCollection services)
     {
@@ -25,6 +25,10 @@ internal static class SecurityServiceCollectionExtensions
                 options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
                 options.Cookie.SameSite = SameSiteMode.Strict;
                 options.Cookie.Path = "/";
+
+                // Signed out after 20 minutes without a request.
+                options.ExpireTimeSpan = TimeSpan.FromMinutes(20);
+                options.SlidingExpiration = true;
 
                 // An API answers with status codes instead of redirecting to a login page.
                 options.Events.OnRedirectToLogin = context => SetStatus(context.Response, StatusCodes.Status401Unauthorized);

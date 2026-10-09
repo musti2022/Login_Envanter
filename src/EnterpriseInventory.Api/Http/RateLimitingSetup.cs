@@ -16,13 +16,23 @@ public sealed class RateLimitingOptions
 
     [Range(1, 3600)]
     public int WindowSeconds { get; set; } = 60;
+
+    /// <summary>Sign-in attempts allowed per client address in each login window.</summary>
+    [Range(1, 1000)]
+    public int LoginPermitLimit { get; set; } = 10;
+
+    [Range(1, 3600)]
+    public int LoginWindowSeconds { get; set; } = 60;
 }
 
 internal static class RateLimitingSetup
 {
+    public const string LoginPolicy = "login";
+
     /// <summary>
     /// A fixed-window limit per signed-in user, or per client address for anonymous requests. Rejected requests
-    /// get 429 with a <c>Retry-After</c> header. The stricter login limit is added with the login (day 7).
+    /// get 429 with a <c>Retry-After</c> header. Sign-in attempts have a stricter limit per client address
+    /// (<see cref="LoginPolicy"/>) on top, which slows password guessing before the directory locks the account.
     /// </summary>
     public static IServiceCollection AddApiRateLimiting(this IServiceCollection services, IConfiguration configuration)
     {
@@ -41,6 +51,17 @@ internal static class RateLimitingSetup
                 {
                     PermitLimit = limits.PermitLimit,
                     Window = TimeSpan.FromSeconds(limits.WindowSeconds),
+                    QueueLimit = 0,
+                });
+            });
+
+            options.AddPolicy(LoginPolicy, context =>
+            {
+                var limits = context.RequestServices.GetRequiredService<IOptions<RateLimitingOptions>>().Value;
+                return RateLimitPartition.GetFixedWindowLimiter($"login:{context.Connection.RemoteIpAddress}", _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = limits.LoginPermitLimit,
+                    Window = TimeSpan.FromSeconds(limits.LoginWindowSeconds),
                     QueueLimit = 0,
                 });
             });

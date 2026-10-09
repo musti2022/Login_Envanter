@@ -156,7 +156,7 @@ public class ApiPipelineTests
     }
 
     [Fact]
-    public async Task Only_the_health_probes_allow_anonymous_access()
+    public async Task Only_the_health_probes_and_sign_in_allow_anonymous_access()
     {
         await using var api = new TestApiFactory();
         using var client = api.CreateAnonymousClient();
@@ -167,7 +167,7 @@ public class ApiPipelineTests
             .Select(endpoint => endpoint.RoutePattern.RawText)
             .Order(StringComparer.Ordinal);
 
-        Assert.Equal(["/api/health/live", "/api/health/ready"], anonymous);
+        Assert.Equal(["/api/auth/login", "/api/health/live", "/api/health/ready"], anonymous);
     }
 
     private static string Header(HttpResponseMessage response, string name) =>
