@@ -1,3 +1,4 @@
+using EnterpriseInventory.Application.Assets;
 using EnterpriseInventory.Application.Authentication;
 using FluentValidation;
 using Microsoft.Extensions.DependencyInjection;
@@ -10,6 +11,7 @@ public static class DependencyInjection
     {
         services.AddValidatorsFromAssembly(typeof(DependencyInjection).Assembly, includeInternalTypes: true);
         services.AddScoped<SignInHandler>();
+        services.AddScoped<AssetService>();
         return services;
     }
 }

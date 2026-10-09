@@ -1,6 +1,5 @@
 using System.Globalization;
 using System.Security.Claims;
-using System.Text.Json;
 using EnterpriseInventory.Api.Http;
 using EnterpriseInventory.Api.Security;
 using EnterpriseInventory.Application.Authentication;
@@ -51,8 +50,7 @@ internal static class AuthEndpoints
         {
             SignInOutcome.Succeeded when result is { Account: { } account, Session: { } session } =>
                 await SignInAsync(httpContext, antiforgery, account, session),
-            SignInOutcome.ValidationFailed => TypedResults.ValidationProblem(
-                CamelCaseKeys(result.Errors ?? new Dictionary<string, string[]>()), title: "İstek geçersiz."),
+            SignInOutcome.ValidationFailed => ApiResults.ValidationProblem(result.Errors ?? new Dictionary<string, string[]>()),
             SignInOutcome.AccountUnavailable => Problem(
                 StatusCodes.Status403Forbidden,
                 "Hesabınızla şu anda giriş yapılamıyor.",
@@ -135,10 +133,7 @@ internal static class AuthEndpoints
     }
 
     private static ProblemHttpResult Problem(int status, string title, string? detail, string code) =>
-        TypedResults.Problem(detail, statusCode: status, title: title, extensions: new Dictionary<string, object?> { ["code"] = code });
-
-    private static Dictionary<string, string[]> CamelCaseKeys(IDictionary<string, string[]> errors) =>
-        errors.ToDictionary(e => JsonNamingPolicy.CamelCase.ConvertName(e.Key), e => e.Value);
+        ApiResults.Problem(status, title, detail, code);
 }
 
 internal sealed record LoginRequest(string? UserName, string? Password);

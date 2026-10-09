@@ -27,8 +27,13 @@ internal static class ProblemDetailsSetup
     /// set itself are kept; only the framework's English defaults are replaced. Exception details are never
     /// included outside Development.
     /// </summary>
-    public static IServiceCollection AddApiProblemDetails(this IServiceCollection services) =>
-        services.AddProblemDetails(options => options.CustomizeProblemDetails = context =>
+    public static IServiceCollection AddApiProblemDetails(this IServiceCollection services)
+    {
+        // A request the endpoint cannot bind (malformed JSON, "page=iki") is the client's error: 400 in every
+        // environment. By default Development throws instead, which the exception handler turns into a 500.
+        services.Configure<RouteHandlerOptions>(options => options.ThrowOnBadRequest = false);
+
+        return services.AddProblemDetails(options => options.CustomizeProblemDetails = context =>
         {
             var problem = context.ProblemDetails;
             if (problem.Status is { } status
@@ -42,4 +47,5 @@ internal static class ProblemDetailsSetup
             problem.Extensions.Remove("traceId");
             problem.Extensions["correlationId"] = context.HttpContext.TraceIdentifier;
         });
+    }
 }

@@ -58,6 +58,22 @@ public class ApiPipelineTests
         Assert.Equal(response.Headers.GetValues(CorrelationHeader).Single(), problem.GetProperty("correlationId").GetString());
     }
 
+    [Theory]
+    [InlineData("Development")]
+    [InlineData("Staging")]
+    public async Task A_request_body_that_cannot_be_read_is_400_in_every_environment(string environment)
+    {
+        await using var api = new TestApiFactory(environment: environment);
+        using var client = api.CreateAnonymousClient();
+        using var content = new StringContent("{ \"userName\": ", System.Text.Encoding.UTF8, "application/json");
+
+        using var response = await client.PostWithCsrfAsync(LoginEndpointTests.Login, await client.GetCsrfTokenAsync(), content);
+        var problem = await ProblemJson.ReadAsync(response);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("İstek geçersiz.", problem.GetProperty("title").GetString());
+    }
+
     [Fact]
     public async Task Correlation_ids_are_generated_by_the_server_for_every_request()
     {

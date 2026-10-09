@@ -70,11 +70,26 @@ public sealed class SqlServerDatabaseFixture : IAsyncLifetime
         return connectionString;
     }
 
+    /// <summary>
+    /// A migrated database of its own, for tests that need to know every row in a table (e.g. paging through
+    /// all assets); it is dropped with the fixture.
+    /// </summary>
+    public async Task<string> CreateMigratedDatabaseAsync()
+    {
+        var connectionString = await CreateEmptyDatabaseAsync();
+        await using var context = CreateContextFor(connectionString);
+        await context.Database.MigrateAsync();
+        return connectionString;
+    }
+
     /// <summary>A new context whose saves are stamped with <paramref name="userName"/> and <see cref="Clock"/>.</summary>
-    public ApplicationDbContext CreateContext(string? userName = DefaultUser)
+    public ApplicationDbContext CreateContext(string? userName = DefaultUser) => CreateContextFor(ConnectionString, userName);
+
+    /// <summary>Like <see cref="CreateContext"/>, for a database made by <see cref="CreateMigratedDatabaseAsync"/>.</summary>
+    public ApplicationDbContext CreateContextFor(string connectionString, string? userName = DefaultUser)
     {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseSqlServer(ConnectionString)
+            .UseSqlServer(connectionString)
             .AddInterceptors(new AuditableEntityInterceptor(new TestCurrentUser(userName), Clock))
             .Options;
         return new ApplicationDbContext(options);

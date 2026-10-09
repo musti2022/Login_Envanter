@@ -1,4 +1,6 @@
 using System.Globalization;
+using System.Text.Json.Serialization;
+using EnterpriseInventory.Api.Assets;
 using EnterpriseInventory.Api.Auth;
 using EnterpriseInventory.Api.Health;
 using EnterpriseInventory.Api.Http;
@@ -30,6 +32,9 @@ try
     builder.WebHost.ConfigureKestrel(options => options.AddServerHeader = false);
 
     builder.Services.AddApiProblemDetails();
+
+    // Enums travel as their names ("Laptop", "Available"), which stay meaningful if values are ever added.
+    builder.Services.ConfigureHttpJsonOptions(options => options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
     builder.Services.AddApiSecurity();
     builder.Services.AddApiDataProtection();
     builder.Services.AddApiRateLimiting(builder.Configuration);
@@ -68,6 +73,7 @@ try
 
     app.MapApiHealthChecks();
     app.MapAuthEndpoints();
+    app.MapAssetEndpoints();
 
     await app.RunAsync();
 }

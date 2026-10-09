@@ -1,6 +1,8 @@
 using EnterpriseInventory.Application.Abstractions;
+using EnterpriseInventory.Application.Assets;
 using EnterpriseInventory.Application.Authentication;
 using EnterpriseInventory.Infrastructure.ActiveDirectory;
+using EnterpriseInventory.Infrastructure.Assets;
 using EnterpriseInventory.Infrastructure.Identity;
 using EnterpriseInventory.Infrastructure.Persistence;
 using EnterpriseInventory.Infrastructure.Persistence.Interceptors;
@@ -28,6 +30,7 @@ public static class DependencyInjection
             new SignInAwareCurrentUser(serviceProvider.GetRequiredService<ICurrentUser>(), serviceProvider.GetRequiredService<SignInIdentity>()),
             serviceProvider.GetRequiredService<TimeProvider>()));
         services.AddScoped<IUserSessionService, UserSessionService>();
+        services.AddScoped<IAssetStore, AssetStore>();
         services.AddDbContext<ApplicationDbContext>((serviceProvider, options) =>
         {
             var connectionString = configuration.GetConnectionString(ConnectionStringName);
