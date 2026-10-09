@@ -92,6 +92,28 @@ public class AssetTests
         Assert.Null(asset.SerialNumber);
     }
 
+    [Theory]
+    [InlineData("5cd1234xyz", "5CD1234XYZ")]
+    [InlineData(" 5CD 1234\u00A0XYZ ", "5CD1234XYZ")]
+    [InlineData("sn-ıi-42", "SN-II-42")]
+    [InlineData("SN-İ-1", "SN-İ-1")]
+    public void Serial_number_is_stored_without_whitespace_and_in_invariant_upper_case(string typed, string stored)
+    {
+        var asset = Asset.Create("DMR-1", AssetType.Laptop, NewModel(), NewCity(), NewDepartment(), serialNumber: typed);
+
+        Assert.Equal(stored, asset.SerialNumber);
+    }
+
+    [Fact]
+    public void Serial_number_length_is_checked_after_whitespace_is_removed()
+    {
+        var spaced = string.Join(' ', Enumerable.Repeat("S", Asset.SerialNumberMaxLength));
+
+        var asset = Asset.Create("DMR-1", AssetType.Laptop, NewModel(), NewCity(), NewDepartment(), serialNumber: spaced);
+
+        Assert.Equal(new string('S', Asset.SerialNumberMaxLength), asset.SerialNumber);
+    }
+
     [Fact]
     public void Create_rejects_undefined_asset_type()
     {

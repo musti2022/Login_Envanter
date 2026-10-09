@@ -9,6 +9,7 @@ internal sealed class AssetConfiguration : IEntityTypeConfiguration<Asset>
     public void Configure(EntityTypeBuilder<Asset> builder)
     {
         builder.ConfigureAuditable();
+        builder.HasKey(a => a.Id);
 
         builder.Property(a => a.AssetCode).HasMaxLength(Asset.AssetCodeMaxLength).IsRequired();
         builder.Property(a => a.ComputerName).HasMaxLength(Asset.ComputerNameMaxLength);
@@ -57,7 +58,10 @@ internal sealed class AssetConfiguration : IEntityTypeConfiguration<Asset>
         builder.HasIndex(a => a.SerialNumber).IsUnique().HasFilter("[SerialNumber] IS NOT NULL");
         builder.HasIndex(a => new { a.IsDeleted, a.Status });
 
-        builder.ToTable(t =>
+        // Archived assets are left out of every query unless it opts in (see SoftDelete.IncludingArchived).
+        builder.HasQueryFilter(SoftDelete.FilterName, a => !a.IsDeleted);
+
+        builder.ToTable("Assets", t =>
         {
             t.HasCheckConstraint("CK_Assets_Status", $"[Status] IN ({ConfigurationExtensions.SqlValues<AssetStatus>()})");
             t.HasCheckConstraint("CK_Assets_AssetType", $"[AssetType] IN ({ConfigurationExtensions.SqlValues<AssetType>()})");
@@ -72,6 +76,7 @@ internal sealed class AssetAssignmentConfiguration : IEntityTypeConfiguration<As
 {
     public void Configure(EntityTypeBuilder<AssetAssignment> builder)
     {
+        builder.HasKey(x => x.Id);
         builder.Property(x => x.AssignmentDescription).HasMaxLength(AssetAssignment.AssignmentDescriptionMaxLength);
         builder.Property(x => x.Notes).HasMaxLength(AssetAssignment.NotesMaxLength);
         builder.Property(x => x.AssignedBy).HasMaxLength(Domain.Common.AuditableEntity.UserNameMaxLength).IsRequired();
@@ -90,7 +95,10 @@ internal sealed class AssetAssignmentConfiguration : IEntityTypeConfiguration<As
             .HasDatabaseName("UX_AssetAssignments_AssetId_Active");
         builder.HasIndex(x => new { x.AssetId, x.AssignedAt });
 
-        builder.ToTable(t =>
+        // Follows the asset's filter, so an assignment is never read without its (required) asset.
+        builder.HasQueryFilter(SoftDelete.FilterName, x => !x.Asset.IsDeleted);
+
+        builder.ToTable("AssetAssignments", t =>
         {
             t.HasCheckConstraint("CK_AssetAssignments_ReturnAfterAssign", "[ReturnedAt] IS NULL OR [ReturnedAt] >= [AssignedAt]");
             t.HasCheckConstraint(

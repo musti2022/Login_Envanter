@@ -58,7 +58,7 @@ public class SaveAssetRequestTests
     }
 
     [Fact]
-    public void The_draft_has_trimmed_text_parsed_enums_and_no_empty_strings()
+    public void The_draft_has_trimmed_text_parsed_enums_a_normalized_serial_number_and_no_empty_strings()
     {
         var draft = AssetDraft.From(Valid with
         {
@@ -66,13 +66,13 @@ public class SaveAssetRequestTests
             AssetType = "desktop",
             Status = "faulty",
             ComputerName = "  ",
-            SerialNumber = " SN-1 ",
+            SerialNumber = " sn 1 ",
             Description = "",
             LocationId = 4,
         });
 
         Assert.Equal(
-            new AssetDraft("DMR-1", AssetType.Desktop, AssetStatus.Faulty, 1, 2, 3, 4, null, "SN-1", null),
+            new AssetDraft("DMR-1", AssetType.Desktop, AssetStatus.Faulty, 1, 2, 3, 4, null, "SN1", null),
             draft);
     }
 

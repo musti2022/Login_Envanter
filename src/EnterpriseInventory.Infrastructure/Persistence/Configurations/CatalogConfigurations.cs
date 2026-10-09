@@ -8,6 +8,7 @@ internal sealed class BrandConfiguration : IEntityTypeConfiguration<Brand>
 {
     public void Configure(EntityTypeBuilder<Brand> builder)
     {
+        builder.ToTable("Brands").HasKey(b => b.Id);
         builder.ConfigureReferenceData();
         builder.HasIndex(b => b.Name).IsUnique();
     }
@@ -17,6 +18,7 @@ internal sealed class AssetModelConfiguration : IEntityTypeConfiguration<AssetMo
 {
     public void Configure(EntityTypeBuilder<AssetModel> builder)
     {
+        builder.ToTable("AssetModels").HasKey(m => m.Id);
         builder.ConfigureReferenceData();
 
         builder.HasOne(m => m.Brand)

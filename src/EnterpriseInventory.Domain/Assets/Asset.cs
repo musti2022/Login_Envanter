@@ -41,7 +41,10 @@ public sealed class Asset : AuditableEntity
 
     public AssetModel Model { get; private set; } = null!;
 
-    /// <summary>Optional; uniqueness among non-empty values is enforced by a filtered index.</summary>
+    /// <summary>
+    /// Optional; stored as <see cref="NormalizeSerialNumber"/> returns it. Uniqueness among non-empty values is
+    /// enforced by a filtered index.
+    /// </summary>
     public string? SerialNumber { get; private set; }
 
     public AssetType AssetType { get; private set; }
@@ -95,7 +98,7 @@ public sealed class Asset : AuditableEntity
         var code = Guard.Required(assetCode, AssetCodeMaxLength, nameof(assetCode));
         var type = Guard.Defined(assetType, nameof(assetType));
         var name = Guard.Optional(computerName, ComputerNameMaxLength, nameof(computerName));
-        var serial = Guard.Optional(serialNumber, SerialNumberMaxLength, nameof(serialNumber));
+        var serial = Guard.Optional(NormalizeSerialNumber(serialNumber), SerialNumberMaxLength, nameof(serialNumber));
         var text = Guard.Optional(description, DescriptionMaxLength, nameof(description));
 
         AssetCode = code;
@@ -103,6 +106,23 @@ public sealed class Asset : AuditableEntity
         ComputerName = name;
         SerialNumber = serial;
         Description = text;
+    }
+
+    /// <summary>
+    /// The stored form of a serial number: every whitespace character removed and letters upper-cased with
+    /// invariant rules, so "5cd 1234 xyz" and "5CD1234XYZ" are the same number. Invariant rules turn both i and ı
+    /// into I; the unique index's Turkish collation would otherwise treat "abci" and "ABCI" as different numbers.
+    /// Other characters, such as dashes, are kept. Empty input is <c>null</c>, which the unique index ignores.
+    /// </summary>
+    public static string? NormalizeSerialNumber(string? serialNumber)
+    {
+        if (serialNumber is null)
+        {
+            return null;
+        }
+
+        var compact = string.Concat(serialNumber.Where(c => !char.IsWhiteSpace(c)));
+        return compact.Length == 0 ? null : compact.ToUpperInvariant();
     }
 
     /// <summary>Sets the model and, from it, the brand, so the two can never disagree.</summary>

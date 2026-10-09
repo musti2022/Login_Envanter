@@ -11,6 +11,7 @@ internal sealed class EmployeeConfiguration : IEntityTypeConfiguration<Employee>
 {
     public void Configure(EntityTypeBuilder<Employee> builder)
     {
+        builder.ToTable("Employees").HasKey(e => e.Id);
         builder.ConfigureAuditable();
         builder.Property(e => e.SamAccountName).HasMaxLength(Employee.SamAccountNameMaxLength).IsRequired();
         builder.Property(e => e.DisplayName).HasMaxLength(Employee.DisplayNameMaxLength).IsRequired();
@@ -28,6 +29,7 @@ internal sealed class AdminUserConfiguration : IEntityTypeConfiguration<AdminUse
 {
     public void Configure(EntityTypeBuilder<AdminUser> builder)
     {
+        builder.ToTable("AdminUsers").HasKey(u => u.Id);
         builder.Property(u => u.SamAccountName).HasMaxLength(AdminUser.SamAccountNameMaxLength).IsRequired();
         builder.Property(u => u.DisplayName).HasMaxLength(AdminUser.DisplayNameMaxLength).IsRequired();
         builder.HasIndex(u => u.ObjectGuid).IsUnique();
@@ -38,6 +40,7 @@ internal sealed class UserSessionConfiguration : IEntityTypeConfiguration<UserSe
 {
     public void Configure(EntityTypeBuilder<UserSession> builder)
     {
+        builder.HasKey(s => s.Id);
         builder.Property(s => s.KeyHash).HasMaxLength(UserSession.KeyHashLength).IsFixedLength().IsRequired();
         builder.Property(s => s.ClientAddress).HasMaxLength(UserSession.ClientAddressMaxLength);
         builder.HasOne(s => s.AdminUser)
@@ -47,7 +50,7 @@ internal sealed class UserSessionConfiguration : IEntityTypeConfiguration<UserSe
 
         builder.HasIndex(s => s.KeyHash).IsUnique();
 
-        builder.ToTable(t =>
+        builder.ToTable("UserSessions", t =>
         {
             t.HasCheckConstraint("CK_UserSessions_EndReason", $"[EndReason] IS NULL OR [EndReason] IN ({ConfigurationExtensions.SqlValues<SessionEndReason>()})");
             t.HasCheckConstraint("CK_UserSessions_Ended", "([EndedAt] IS NULL AND [EndReason] IS NULL) OR ([EndedAt] IS NOT NULL AND [EndReason] IS NOT NULL)");
@@ -60,16 +63,21 @@ internal sealed class AuditLogConfiguration : IEntityTypeConfiguration<AuditLog>
 {
     public void Configure(EntityTypeBuilder<AuditLog> builder)
     {
+        builder.HasKey(l => l.Id);
         builder.Property(l => l.EntityName).HasMaxLength(AuditLog.EntityNameMaxLength).IsRequired();
         builder.Property(l => l.EntityId).HasMaxLength(AuditLog.EntityIdMaxLength).IsRequired();
         builder.Property(l => l.UserName).HasMaxLength(AuditableEntity.UserNameMaxLength).IsRequired();
         builder.Property(l => l.CorrelationId).HasMaxLength(AuditLog.CorrelationIdMaxLength).IsRequired();
 
+        // JSON snapshots of the changed fields; their size depends on the entity, so they have no length limit.
+        builder.Property(l => l.OldValues).HasColumnType("nvarchar(max)");
+        builder.Property(l => l.NewValues).HasColumnType("nvarchar(max)");
+
         builder.HasIndex(l => new { l.EntityName, l.EntityId });
         builder.HasIndex(l => l.Timestamp);
         builder.HasIndex(l => l.CorrelationId);
 
-        builder.ToTable(t =>
+        builder.ToTable("AuditLogs", t =>
         {
             t.HasCheckConstraint("CK_AuditLogs_Action", $"[Action] IN ({ConfigurationExtensions.SqlValues<AuditAction>()})");
             t.HasCheckConstraint("CK_AuditLogs_HasValues", "[OldValues] IS NOT NULL OR [NewValues] IS NOT NULL");

@@ -8,6 +8,7 @@ internal sealed class CityConfiguration : IEntityTypeConfiguration<City>
 {
     public void Configure(EntityTypeBuilder<City> builder)
     {
+        builder.ToTable("Cities").HasKey(c => c.Id);
         builder.ConfigureReferenceData();
         builder.HasIndex(c => c.Name).IsUnique();
     }
@@ -17,6 +18,7 @@ internal sealed class DepartmentConfiguration : IEntityTypeConfiguration<Departm
 {
     public void Configure(EntityTypeBuilder<Department> builder)
     {
+        builder.ToTable("Departments").HasKey(d => d.Id);
         builder.ConfigureReferenceData();
         builder.HasIndex(d => d.Name).IsUnique();
     }
@@ -26,6 +28,7 @@ internal sealed class LocationConfiguration : IEntityTypeConfiguration<Location>
 {
     public void Configure(EntityTypeBuilder<Location> builder)
     {
+        builder.ToTable("Locations").HasKey(l => l.Id);
         builder.ConfigureReferenceData();
 
         builder.HasOne(l => l.City)

@@ -31,7 +31,9 @@ internal sealed partial class AssetStore(
     {
         ArgumentNullException.ThrowIfNull(criteria);
 
-        var assets = Filter(db.Assets.AsNoTracking(), criteria);
+        // Normal lists rely on the soft-delete filter; only the archive list turns it off, to show archived assets.
+        var source = criteria.Archived ? db.Assets.IncludingArchived().Where(a => a.IsDeleted) : db.Assets;
+        var assets = Filter(source.AsNoTracking(), criteria);
         var totalCount = await assets.CountAsync(cancellationToken).ConfigureAwait(false);
 
         var rows = await Sort(assets, criteria)
@@ -84,8 +86,6 @@ internal sealed partial class AssetStore(
 
     private static IQueryable<Asset> Filter(IQueryable<Asset> assets, AssetListCriteria criteria)
     {
-        assets = assets.Where(a => a.IsDeleted == criteria.Archived);
-
         // Contains becomes LIKE with its wildcards escaped, so % and _ are plain characters.
         foreach (var term in criteria.SearchTerms)
         {
@@ -171,9 +171,10 @@ internal sealed partial class AssetStore(
             descending ? assets.OrderByDescending(key) : assets.OrderBy(key);
     }
 
+    /// <summary>Archived assets too: their detail page shows them as archived.</summary>
     public async Task<AssetDetails?> FindAsync(int id, CancellationToken cancellationToken)
     {
-        var row = await db.Assets.AsNoTracking()
+        var row = await db.Assets.IncludingArchived().AsNoTracking()
             .Where(a => a.Id == id)
             .Select(a => new
             {
@@ -300,10 +301,7 @@ internal sealed partial class AssetStore(
             return AssetWriteResult.NotFound;
         }
 
-        // The caller edited an older version: refuse before looking at anything else. The same check is repeated
-        // by the database on save (the rowversion is part of the UPDATE's WHERE), which catches edits that land
-        // between this read and the save.
-        if (!asset.RowVersion.AsSpan().SequenceEqual(rowVersion))
+        if (!MatchesClientVersion(asset, rowVersion))
         {
             LogConflict(id);
             return AssetWriteResult.Conflict;
@@ -391,7 +389,7 @@ internal sealed partial class AssetStore(
             return AssetWriteResult.NotFound;
         }
 
-        if (!asset.RowVersion.AsSpan().SequenceEqual(rowVersion))
+        if (!MatchesClientVersion(asset, rowVersion))
         {
             LogConflict(id);
             return AssetWriteResult.Conflict;
@@ -430,7 +428,7 @@ internal sealed partial class AssetStore(
 
     public async Task<PagedResult<AssetHistoryEntry>?> HistoryAsync(int id, int page, int pageSize, CancellationToken cancellationToken)
     {
-        if (!await db.Assets.AnyAsync(a => a.Id == id, cancellationToken).ConfigureAwait(false))
+        if (!await db.Assets.IncludingArchived().AnyAsync(a => a.Id == id, cancellationToken).ConfigureAwait(false))
         {
             return null;
         }
@@ -453,9 +451,13 @@ internal sealed partial class AssetStore(
         return new PagedResult<AssetHistoryEntry>(items, page, pageSize, totalCount);
     }
 
-    /// <summary>The asset with everything its audit snapshot names, tracked so it can be changed.</summary>
+    /// <summary>
+    /// The asset with everything its audit snapshot names, tracked so it can be changed. Archived ones too, so a
+    /// change to an archived asset is refused as such instead of as "not found".
+    /// </summary>
     private Task<Asset?> LoadForChangeAsync(int id, CancellationToken cancellationToken) =>
         db.Assets
+            .IncludingArchived()
             .Include(a => a.Brand)
             .Include(a => a.Model)
             .Include(a => a.City)
@@ -535,18 +537,31 @@ internal sealed partial class AssetStore(
         var errors = new Dictionary<string, string[]>();
 
         // The columns' Turkish_CI_AS collation makes these comparisons case-insensitive, like the unique indexes.
-        if (await db.Assets.AnyAsync(a => a.AssetCode == draft.AssetCode && a.Id != exceptAssetId, cancellationToken).ConfigureAwait(false))
+        var assets = db.Assets.IncludingArchived();
+        if (await assets.AnyAsync(a => a.AssetCode == draft.AssetCode && a.Id != exceptAssetId, cancellationToken).ConfigureAwait(false))
         {
             errors[nameof(AssetDraft.AssetCode)] = [AssetMessages.AssetCodeTaken];
         }
 
         if (draft.SerialNumber is { } serial
-            && await db.Assets.AnyAsync(a => a.SerialNumber == serial && a.Id != exceptAssetId, cancellationToken).ConfigureAwait(false))
+            && await assets.AnyAsync(a => a.SerialNumber == serial && a.Id != exceptAssetId, cancellationToken).ConfigureAwait(false))
         {
             errors[nameof(AssetDraft.SerialNumber)] = [AssetMessages.SerialNumberTaken];
         }
 
         return errors;
+    }
+
+    /// <summary>
+    /// Whether the caller read the version just loaded; refusing here spares the work of a change that would fail.
+    /// The client's version also becomes the original value EF Core puts in the UPDATE's WHERE, so a change that
+    /// lands between this read and the save is caught by the database (<see cref="DbUpdateConcurrencyException"/>)
+    /// and nothing is overwritten.
+    /// </summary>
+    private bool MatchesClientVersion(Asset asset, byte[] rowVersion)
+    {
+        db.Entry(asset).Property(a => a.RowVersion).OriginalValue = rowVersion;
+        return asset.RowVersion.AsSpan().SequenceEqual(rowVersion);
     }
 
     private static Dictionary<string, string[]> DuplicateField(DbUpdateException exception)

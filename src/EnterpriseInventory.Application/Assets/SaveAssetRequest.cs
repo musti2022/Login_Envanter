@@ -29,6 +29,7 @@ public record SaveAssetRequest
 
     public string? ComputerName { get; init; }
 
+    /// <summary>Stored without whitespace and in upper case (<see cref="Asset.NormalizeSerialNumber"/>).</summary>
     public string? SerialNumber { get; init; }
 
     public string? Description { get; init; }
@@ -60,7 +61,7 @@ public sealed record AssetDraft(
             request.DepartmentId!.Value,
             request.LocationId,
             Blank(request.ComputerName),
-            Blank(request.SerialNumber),
+            Asset.NormalizeSerialNumber(request.SerialNumber),
             Blank(request.Description));
     }
 
@@ -110,7 +111,7 @@ internal abstract class AssetFieldsValidator<T> : AbstractValidator<T>
 
         RuleFor(r => r.SerialNumber)
             .Cascade(CascadeMode.Stop)
-            .Must(serial => Trimmed(serial) <= Asset.SerialNumberMaxLength)
+            .Must(serial => (Asset.NormalizeSerialNumber(serial)?.Length ?? 0) <= Asset.SerialNumberMaxLength)
             .WithMessage($"Seri numarası en fazla {Asset.SerialNumberMaxLength} karakter olabilir.")
             .Must(NoControlCharacters).WithMessage("Seri numarası geçersiz karakter içeriyor.");
 

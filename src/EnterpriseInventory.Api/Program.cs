@@ -10,6 +10,7 @@ using EnterpriseInventory.Api.Security;
 using EnterpriseInventory.Application;
 using EnterpriseInventory.Application.Abstractions;
 using EnterpriseInventory.Infrastructure;
+using EnterpriseInventory.Infrastructure.Persistence.Seed;
 using Serilog;
 using Serilog.Events;
 
@@ -48,6 +49,14 @@ try
 
     // No CORS: the React app, /api and /hubs are served from the same origin, so cross-origin calls are refused.
     var app = builder.Build();
+
+    // `dotnet run -- seed-development-data` adds sample lookups to a development database and exits.
+    if (args is [DevelopmentSeed.Command])
+    {
+        var added = await DevelopmentSeed.RunAsync(app.Services, CancellationToken.None);
+        Log.Information("Development seed added {RowCount} rows", added);
+        return;
+    }
 
     app.UseMiddleware<CorrelationIdMiddleware>();
     app.UseExceptionHandler();

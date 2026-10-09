@@ -11,7 +11,8 @@ internal sealed class DashboardStore(ApplicationDbContext db) : IDashboardStore
 {
     public async Task<DashboardStatistics> GetStatisticsAsync(CancellationToken cancellationToken)
     {
-        var byStatus = await db.Assets.AsNoTracking()
+        // Archived assets are counted too (ArchivedCount), so this query turns the soft-delete filter off.
+        var byStatus = await db.Assets.IncludingArchived().AsNoTracking()
             .GroupBy(a => new { a.IsDeleted, a.Status })
             .Select(g => new { g.Key.IsDeleted, g.Key.Status, Count = g.Count() })
             .ToListAsync(cancellationToken)
@@ -19,7 +20,7 @@ internal sealed class DashboardStore(ApplicationDbContext db) : IDashboardStore
 
         int Count(AssetStatus status) => byStatus.Where(g => !g.IsDeleted && g.Status == status).Sum(g => g.Count);
 
-        var active = db.Assets.AsNoTracking().Where(a => !a.IsDeleted);
+        var active = db.Assets.AsNoTracking();
         var byCity = await active
             .GroupBy(a => new { a.City.Id, a.City.Name })
             .OrderByDescending(g => g.Count())
@@ -58,7 +59,8 @@ internal sealed class DashboardStore(ApplicationDbContext db) : IDashboardStore
             .ConfigureAwait(false);
 
         var assetIds = records.Select(r => int.Parse(r.EntityId, CultureInfo.InvariantCulture)).Distinct().ToList();
-        var codes = await db.Assets.AsNoTracking()
+        // Recent activity includes archiving, so archived assets are named too.
+        var codes = await db.Assets.IncludingArchived().AsNoTracking()
             .Where(a => assetIds.Contains(a.Id))
             .ToDictionaryAsync(a => a.Id, a => a.AssetCode, cancellationToken)
             .ConfigureAwait(false);
