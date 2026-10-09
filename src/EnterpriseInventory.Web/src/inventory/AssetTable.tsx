@@ -112,6 +112,12 @@ export function AssetTable({ page, params, hiddenColumns, onSort, onPage, onPage
         }
         showFirstButton
         showLastButton
+        // On a phone the page buttons go under the page size instead of off the edge.
+        sx={{
+          '& .MuiTablePagination-toolbar': { flexWrap: 'wrap', justifyContent: 'flex-end', rowGap: 0.5, px: { xs: 1, sm: 2 } },
+          '& .MuiTablePagination-spacer': { display: { xs: 'none', sm: 'block' } },
+          '& .MuiTablePagination-actions': { ml: { xs: 1, sm: 2.5 } },
+        }}
       />
     </>
   )

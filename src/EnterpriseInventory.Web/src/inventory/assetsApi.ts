@@ -187,3 +187,22 @@ export function updateAsset(id: number, body: SaveAssetBody, rowVersion: string)
 export function archiveAsset(id: number, rowVersion: string) {
   return apiFetch<void>(`/api/assets/${id}?rowVersion=${encodeURIComponent(rowVersion)}`, { method: 'DELETE' })
 }
+
+/** One audit record of GET /api/assets/{id}/history: the fields an action changed, as JSON objects. */
+export interface AssetHistoryEntry {
+  id: number
+  action: string
+  userName: string
+  timestamp: string
+  correlationId: string
+  oldValues: Record<string, unknown> | null
+  newValues: Record<string, unknown> | null
+}
+
+export const historyPageSize = 10
+
+export const assetHistoryQueryKey = (id: number, page: number) => [...assetsQueryKey, 'history', id, page] as const
+
+export function fetchAssetHistory(id: number, page: number, signal?: AbortSignal) {
+  return apiFetch<PagedResult<AssetHistoryEntry>>(`/api/assets/${id}/history?page=${page}&pageSize=${historyPageSize}`, { signal })
+}

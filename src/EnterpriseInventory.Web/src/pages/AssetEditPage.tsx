@@ -4,11 +4,11 @@ import { useState } from 'react'
 import { Link as RouterLink, useNavigate, useParams } from 'react-router'
 import { ApiError } from '../api/http'
 import { PageHeader } from '../components/PageHeader'
-import { EmptyState } from '../components/states/EmptyState'
 import { ErrorState } from '../components/states/ErrorState'
 import { LoadingState } from '../components/states/LoadingState'
 import { assetSaved } from '../inventory/assetCache'
 import { AssetForm } from '../inventory/AssetForm'
+import { AssetNotFound } from '../inventory/AssetNotFound'
 import { assetQueryKey, fetchAsset, retryUnlessNotFound, updateAsset, type AssetDetails } from '../inventory/assetsApi'
 import { parseAssetId } from '../inventory/assetId'
 
@@ -41,15 +41,7 @@ export function AssetEditPage() {
     return (
       <>
         {header}
-        <EmptyState
-          title="Demirbaş bulunamadı"
-          description="Kayıt silinmiş veya adres yanlış olabilir."
-          action={
-            <Button variant="contained" component={RouterLink} to="/envanter">
-              Envantere dön
-            </Button>
-          }
-        />
+        <AssetNotFound />
       </>
     )
   }

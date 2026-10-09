@@ -14,7 +14,11 @@ interface RenderOptions {
   user?: CurrentUser | null | undefined
 }
 
-export function renderWithRouter(initialPath = '/', { routes = appRoutes, ...options }: RenderOptions = {}) {
+/** Renders the app at a path, or at a history entry with state (what navigate(path, { state }) leaves). */
+export function renderWithRouter(
+  initialPath: string | { pathname: string; state?: unknown } = '/',
+  { routes = appRoutes, ...options }: RenderOptions = {},
+) {
   const queryClient = createQueryClient()
   const user = 'user' in options ? options.user : testUser
   if (user !== undefined) {

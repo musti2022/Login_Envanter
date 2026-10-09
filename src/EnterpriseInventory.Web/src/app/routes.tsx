@@ -2,6 +2,7 @@ import type { RouteObject } from 'react-router'
 import { RequireAuth, signInPath } from '../auth/RequireAuth'
 import { AppLayout } from '../layout/AppLayout'
 import { AssetCreatePage } from '../pages/AssetCreatePage'
+import { AssetDetailPage } from '../pages/AssetDetailPage'
 import { AssetEditPage } from '../pages/AssetEditPage'
 import { DashboardPage } from '../pages/DashboardPage'
 import { InventoryPage } from '../pages/InventoryPage'
@@ -23,6 +24,7 @@ export const routes: RouteObject[] = [
           { index: true, element: <DashboardPage /> },
           { path: 'envanter', element: <InventoryPage /> },
           { path: 'envanter/yeni', element: <AssetCreatePage /> },
+          { path: 'envanter/:id', element: <AssetDetailPage /> },
           { path: 'envanter/:id/duzenle', element: <AssetEditPage /> },
           {
             path: 'zimmetler',
