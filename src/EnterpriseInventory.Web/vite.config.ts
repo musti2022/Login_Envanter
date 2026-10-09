@@ -34,6 +34,8 @@ export default defineConfig(({ mode }) => {
       setupFiles: './src/test/setup.ts',
       // The browser tests in e2e/ run with Playwright (npm run test:e2e).
       include: ['src/**/*.test.{ts,tsx}'],
+      // Form tests click through many MUI selects; with every file running in parallel one can take several seconds.
+      testTimeout: 15_000,
     },
   }
 })

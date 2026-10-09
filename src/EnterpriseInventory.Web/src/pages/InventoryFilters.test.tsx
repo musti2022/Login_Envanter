@@ -3,6 +3,7 @@ import { listItem, pageOf } from '../test/assetData'
 import { lookupRoutes } from '../test/lookupData'
 import { json, mockApi, type RecordedRequest } from '../test/mockApi'
 import { renderWithRouter } from '../test/renderWithRouter'
+import { choose } from '../test/select'
 import { mockViewport } from '../test/viewport'
 
 function listRequests(requests: RecordedRequest[]) {
@@ -15,19 +16,6 @@ function lastListRequest(requests: RecordedRequest[]) {
 
 function combobox(name: string) {
   return screen.getByRole('combobox', { name })
-}
-
-/** Opens a select and clicks the option; a multiple select stays open, so it is closed with Escape. */
-async function choose(selectName: string, ...options: string[]) {
-  fireEvent.mouseDown(combobox(selectName))
-  const listbox = await screen.findByRole('listbox')
-  for (const option of options) {
-    fireEvent.click(within(listbox).getByRole('option', { name: option }))
-  }
-  if (screen.queryByRole('listbox')) {
-    fireEvent.keyDown(screen.getByRole('listbox'), { key: 'Escape' })
-  }
-  await waitFor(() => expect(screen.queryByRole('listbox')).not.toBeInTheDocument())
 }
 
 function setup(path: string, assetsPage = pageOf([listItem()])) {

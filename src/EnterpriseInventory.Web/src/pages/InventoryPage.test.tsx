@@ -169,4 +169,15 @@ describe('InventoryPage', () => {
 
     expect(await screen.findByRole('table', { name: 'Demirbaş listesi' })).toBeInTheDocument()
   })
+
+  it('links to adding an asset and to editing each asset that is not archived', async () => {
+    mockApi({ 'GET /api/assets': json(200, pageOf([listItem(), listItem({ id: 3, assetCode: 'DMR-0003', isArchived: true })])) })
+    renderWithRouter('/envanter')
+
+    await screen.findByRole('table', { name: 'Demirbaş listesi' })
+    expect(screen.getByRole('link', { name: 'Yeni Demirbaş' })).toHaveAttribute('href', '/envanter/yeni')
+    expect(screen.getByRole('link', { name: 'DMR-0001 düzenle' })).toHaveAttribute('href', '/envanter/1/duzenle')
+    expect(screen.queryByRole('link', { name: 'DMR-0003 düzenle' })).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'DMR-0003 detayı' })).toHaveAttribute('href', '/envanter/3')
+  })
 })

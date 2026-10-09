@@ -1,6 +1,7 @@
+import AddIcon from '@mui/icons-material/Add'
 import { Box, Button, Card, LinearProgress } from '@mui/material'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
-import { useSearchParams } from 'react-router'
+import { Link as RouterLink, useSearchParams } from 'react-router'
 import { usePreferences } from '../app/preferencesContext'
 import { PageHeader } from '../components/PageHeader'
 import { EmptyState } from '../components/states/EmptyState'
@@ -40,7 +41,14 @@ export function InventoryPage() {
       <PageHeader
         title="Envanter"
         description="Demirbaşları listeleyin, arayın ve yönetin."
-        actions={<ColumnMenu hidden={hiddenColumns} onChange={setHiddenColumns} />}
+        actions={
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+            <ColumnMenu hidden={hiddenColumns} onChange={setHiddenColumns} />
+            <Button variant="contained" startIcon={<AddIcon />} component={RouterLink} to="/envanter/yeni">
+              Yeni Demirbaş
+            </Button>
+          </Box>
+        }
       />
       <Card>
         <AssetFilters params={params} onChange={update} />

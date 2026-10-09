@@ -142,7 +142,9 @@ test('archived assets are listed only on request and a search without matches sa
 
   await page.goto(`/envanter?search=${prefix}`)
   await expectTableToMatchApi(page, client, 11)
-  await page.getByRole('switch', { name: 'Arşivlenmişleri göster' }).check()
+  // The switch follows the page address, which changes just after the click, so check() would look too early.
+  await page.getByRole('switch', { name: 'Arşivlenmişleri göster' }).click()
+  await expect(page.getByRole('switch', { name: 'Arşivlenmişleri göster' })).toBeChecked()
   await expect(page).toHaveURL(/archived=true/)
   await expectTableToMatchApi(page, client, 1)
   await expect(tableCodes(page)).toHaveText([archived.assetCode])

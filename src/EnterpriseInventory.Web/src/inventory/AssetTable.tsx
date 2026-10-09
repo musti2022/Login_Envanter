@@ -1,3 +1,4 @@
+import EditIcon from '@mui/icons-material/Edit'
 import VisibilityIcon from '@mui/icons-material/Visibility'
 import {
   IconButton,
@@ -67,7 +68,7 @@ export function AssetTable({ page, params, hiddenColumns, onSort, onPage, onPage
                 {columns.map((column) => (
                   <TableCell key={column.key}>{column.render(asset)}</TableCell>
                 ))}
-                <TableCell align="right">
+                <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
                   <Tooltip title="Detay">
                     <IconButton
                       size="small"
@@ -78,6 +79,18 @@ export function AssetTable({ page, params, hiddenColumns, onSort, onPage, onPage
                       <VisibilityIcon fontSize="small" />
                     </IconButton>
                   </Tooltip>
+                  {!asset.isArchived && (
+                    <Tooltip title="Düzenle">
+                      <IconButton
+                        size="small"
+                        component={RouterLink}
+                        to={`/envanter/${asset.id}/duzenle`}
+                        aria-label={`${asset.assetCode} düzenle`}
+                      >
+                        <EditIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  )}
                 </TableCell>
               </TableRow>
             ))}

@@ -1,6 +1,8 @@
 import type { RouteObject } from 'react-router'
 import { RequireAuth, signInPath } from '../auth/RequireAuth'
 import { AppLayout } from '../layout/AppLayout'
+import { AssetCreatePage } from '../pages/AssetCreatePage'
+import { AssetEditPage } from '../pages/AssetEditPage'
 import { DashboardPage } from '../pages/DashboardPage'
 import { InventoryPage } from '../pages/InventoryPage'
 import { LoginPage } from '../pages/LoginPage'
@@ -20,6 +22,8 @@ export const routes: RouteObject[] = [
         children: [
           { index: true, element: <DashboardPage /> },
           { path: 'envanter', element: <InventoryPage /> },
+          { path: 'envanter/yeni', element: <AssetCreatePage /> },
+          { path: 'envanter/:id/duzenle', element: <AssetEditPage /> },
           {
             path: 'zimmetler',
             element: (

@@ -1,4 +1,4 @@
-import { apiFetch } from '../api/http'
+import { ApiError, apiFetch } from '../api/http'
 import type { AssetStatus, AssetType } from './labels'
 
 export interface PagedResult<T> {
@@ -109,4 +109,81 @@ export const assetsQueryKey = ['assets'] as const
 export function fetchAssets(params: AssetListParams, signal?: AbortSignal) {
   const query = toQueryString(params)
   return apiFetch<PagedResult<AssetListItem>>(`/api/assets${query ? `?${query}` : ''}`, { signal })
+}
+
+export interface NamedReference {
+  id: number
+  name: string
+}
+
+/** Who holds the asset now. */
+export interface ActiveAssignment {
+  id: number
+  employeeId: number
+  userName: string
+  displayName: string
+  assignmentDescription: string | null
+  assignedAt: string
+  assignedBy: string
+}
+
+/** GET /api/assets/{id}: everything about one asset, with the row version an update or archive sends back. */
+export interface AssetDetails {
+  id: number
+  assetCode: string
+  computerName: string | null
+  assetType: AssetType
+  status: AssetStatus
+  serialNumber: string | null
+  description: string | null
+  brand: NamedReference
+  model: NamedReference
+  city: NamedReference
+  department: NamedReference
+  location: NamedReference | null
+  activeAssignment: ActiveAssignment | null
+  isArchived: boolean
+  createdAt: string
+  createdBy: string
+  updatedAt: string | null
+  updatedBy: string | null
+  rowVersion: string
+}
+
+/** Body of POST /api/assets; PUT adds the row version. The brand is the model's. */
+export interface SaveAssetBody {
+  assetCode: string
+  assetType: AssetType
+  status: AssetStatus
+  modelId: number
+  cityId: number
+  departmentId: number
+  locationId: number | null
+  computerName: string | null
+  serialNumber: string | null
+  description: string | null
+}
+
+export const assetQueryKey = (id: number) => [...assetsQueryKey, 'detail', id] as const
+
+/** Query retry rule for one asset: a missing asset stays missing, anything else is tried once more. */
+export function retryUnlessNotFound(failureCount: number, error: unknown) {
+  return !(error instanceof ApiError && error.status === 404) && failureCount < 1
+}
+
+export function fetchAsset(id: number, signal?: AbortSignal) {
+  return apiFetch<AssetDetails>(`/api/assets/${id}`, { signal })
+}
+
+export function createAsset(body: SaveAssetBody) {
+  return apiFetch<AssetDetails>('/api/assets', { method: 'POST', body })
+}
+
+export function updateAsset(id: number, body: SaveAssetBody, rowVersion: string) {
+  return apiFetch<AssetDetails>(`/api/assets/${id}`, { method: 'PUT', body: { ...body, rowVersion } })
+}
+
+/** Archives (soft-deletes) the asset; refused with 409 when someone changed it since rowVersion was read. */
+export function archiveAsset(id: number, rowVersion: string) {
+  return apiFetch<void>(`/api/assets/${id}?rowVersion=${encodeURIComponent(rowVersion)}`, { method: 'DELETE' })
 }
