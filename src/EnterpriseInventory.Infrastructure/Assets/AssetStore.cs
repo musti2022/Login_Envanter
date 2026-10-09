@@ -20,17 +20,21 @@ internal sealed partial class AssetStore(
     TimeProvider timeProvider,
     ILogger<AssetStore> logger) : IAssetStore
 {
+    /// <summary>
+    /// Search ignores case and accents, and treats i, ı, İ and I as one letter: under the database's
+    /// Turkish_CI_AS, "pc-ist" would not find "PC-IST-01" (Turkish i is not I) and "canta" would not find "çanta".
+    /// Uniqueness and sorting keep the Turkish rules.
+    /// </summary>
+    private const string SearchCollation = "Latin1_General_100_CI_AI";
+
     public async Task<PagedResult<AssetListItem>> ListAsync(AssetListCriteria criteria, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(criteria);
 
-        var assets = db.Assets.AsNoTracking().Where(a => !a.IsDeleted);
+        var assets = Filter(db.Assets.AsNoTracking(), criteria);
         var totalCount = await assets.CountAsync(cancellationToken).ConfigureAwait(false);
 
-        // The ID breaks ties, so every row appears on exactly one page.
-        var rows = await assets
-            .OrderBy(a => a.AssetCode)
-            .ThenBy(a => a.Id)
+        var rows = await Sort(assets, criteria)
             .Skip((criteria.Page - 1) * criteria.PageSize)
             .Take(criteria.PageSize)
             .Select(a => new
@@ -76,6 +80,95 @@ internal sealed partial class AssetStore(
             r.CreatedAt,
             r.UpdatedAt));
         return new PagedResult<AssetListItem>(items, criteria.Page, criteria.PageSize, totalCount);
+    }
+
+    private static IQueryable<Asset> Filter(IQueryable<Asset> assets, AssetListCriteria criteria)
+    {
+        assets = assets.Where(a => a.IsDeleted == criteria.Archived);
+
+        // Contains becomes LIKE with its wildcards escaped, so % and _ are plain characters.
+        foreach (var term in criteria.SearchTerms)
+        {
+            assets = assets.Where(a =>
+                EF.Functions.Collate(a.AssetCode, SearchCollation).Contains(term)
+                || EF.Functions.Collate(a.ComputerName!, SearchCollation).Contains(term)
+                || EF.Functions.Collate(a.SerialNumber!, SearchCollation).Contains(term)
+                || EF.Functions.Collate(a.Brand.Name, SearchCollation).Contains(term)
+                || EF.Functions.Collate(a.Model.Name, SearchCollation).Contains(term)
+                || EF.Functions.Collate(a.City.Name, SearchCollation).Contains(term)
+                || EF.Functions.Collate(a.Department.Name, SearchCollation).Contains(term)
+                || EF.Functions.Collate(a.Location!.Name, SearchCollation).Contains(term)
+                || a.Assignments.Any(x => x.ReturnedAt == null
+                    && (EF.Functions.Collate(x.Employee.SamAccountName, SearchCollation).Contains(term)
+                        || EF.Functions.Collate(x.Employee.DisplayName, SearchCollation).Contains(term)
+                        || EF.Functions.Collate(x.AssignmentDescription!, SearchCollation).Contains(term))));
+        }
+
+        if (criteria.Statuses.Count > 0)
+        {
+            assets = assets.Where(a => criteria.Statuses.Contains(a.Status));
+        }
+
+        if (criteria.AssetTypes.Count > 0)
+        {
+            assets = assets.Where(a => criteria.AssetTypes.Contains(a.AssetType));
+        }
+
+        if (criteria.BrandId is { } brandId)
+        {
+            assets = assets.Where(a => a.BrandId == brandId);
+        }
+
+        if (criteria.ModelId is { } modelId)
+        {
+            assets = assets.Where(a => a.ModelId == modelId);
+        }
+
+        if (criteria.CityId is { } cityId)
+        {
+            assets = assets.Where(a => a.CityId == cityId);
+        }
+
+        if (criteria.DepartmentId is { } departmentId)
+        {
+            assets = assets.Where(a => a.DepartmentId == departmentId);
+        }
+
+        if (criteria.LocationId is { } locationId)
+        {
+            assets = assets.Where(a => a.LocationId == locationId);
+        }
+
+        return assets;
+    }
+
+    /// <summary>The chosen column first; the asset code (unique) and ID break ties, so pages never overlap.</summary>
+    private static IQueryable<Asset> Sort(IQueryable<Asset> assets, AssetListCriteria criteria)
+    {
+        var descending = criteria.Descending;
+        var sorted = criteria.SortBy switch
+        {
+            AssetSortField.ComputerName => By(a => a.ComputerName),
+            AssetSortField.SerialNumber => By(a => a.SerialNumber),
+            AssetSortField.BrandName => By(a => a.Brand.Name),
+            AssetSortField.ModelName => By(a => a.Model.Name),
+            AssetSortField.AssetType => By(a => a.AssetType),
+            AssetSortField.Status => By(a => a.Status),
+            AssetSortField.CityName => By(a => a.City.Name),
+            AssetSortField.DepartmentName => By(a => a.Department.Name),
+            AssetSortField.LocationName => By(a => a.Location != null ? a.Location.Name : null),
+            AssetSortField.AssignedUserName => By(a => a.Assignments.Where(x => x.ReturnedAt == null).Select(x => x.Employee.SamAccountName).FirstOrDefault()),
+            AssetSortField.AssignedDisplayName => By(a => a.Assignments.Where(x => x.ReturnedAt == null).Select(x => x.Employee.DisplayName).FirstOrDefault()),
+            AssetSortField.CreatedAt => By(a => a.CreatedAt),
+            AssetSortField.UpdatedAt => By(a => a.UpdatedAt),
+            _ => By(a => a.AssetCode),
+        };
+        return descending
+            ? sorted.ThenByDescending(a => a.AssetCode).ThenByDescending(a => a.Id)
+            : sorted.ThenBy(a => a.AssetCode).ThenBy(a => a.Id);
+
+        IOrderedQueryable<Asset> By<TKey>(System.Linq.Expressions.Expression<Func<Asset, TKey>> key) =>
+            descending ? assets.OrderByDescending(key) : assets.OrderBy(key);
     }
 
     public async Task<AssetDetails?> FindAsync(int id, CancellationToken cancellationToken)

@@ -27,8 +27,7 @@ public sealed class AssetService(
             return new AssetListResult(null, validation.ToDictionary());
         }
 
-        var criteria = new AssetListCriteria(request.Page ?? 1, request.PageSize ?? AssetListRequest.DefaultPageSize);
-        return new AssetListResult(await store.ListAsync(criteria, cancellationToken).ConfigureAwait(false), null);
+        return new AssetListResult(await store.ListAsync(AssetListCriteria.From(request), cancellationToken).ConfigureAwait(false), null);
     }
 
     public Task<AssetDetails?> FindAsync(int id, CancellationToken cancellationToken) => store.FindAsync(id, cancellationToken);

@@ -25,6 +25,7 @@ public sealed class SqlServerDatabaseFixture : IAsyncLifetime
     public TestClock Clock { get; } = new(new DateTimeOffset(2026, 10, 9, 6, 0, 0, TimeSpan.Zero));
 
     private readonly List<string> _createdDatabases = [];
+    private readonly Dictionary<string, Task<object>> _shared = [];
 
     public string ConnectionString { get; private set; } = string.Empty;
 
@@ -80,6 +81,26 @@ public sealed class SqlServerDatabaseFixture : IAsyncLifetime
         await using var context = CreateContextFor(connectionString);
         await context.Database.MigrateAsync();
         return connectionString;
+    }
+
+    /// <summary>
+    /// Runs <paramref name="create"/> once per test run and hands its result to every later caller with the same
+    /// key: for read-only data many tests share, such as a seeded database of their own. Tests in the collection
+    /// run one at a time, so no lock is needed.
+    /// </summary>
+    public async Task<T> SharedAsync<T>(string key, Func<Task<T>> create)
+        where T : notnull
+    {
+        ArgumentNullException.ThrowIfNull(create);
+        if (!_shared.TryGetValue(key, out var result))
+        {
+            result = Box();
+            _shared[key] = result;
+        }
+
+        return (T)await result;
+
+        async Task<object> Box() => await create();
     }
 
     /// <summary>A new context whose saves are stamped with <paramref name="userName"/> and <see cref="Clock"/>.</summary>

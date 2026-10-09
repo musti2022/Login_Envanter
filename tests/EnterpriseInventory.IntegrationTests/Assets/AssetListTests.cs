@@ -30,6 +30,17 @@ public sealed class AssetListTests(SqlServerDatabaseFixture fixture) : IAsyncLif
             return;
         }
 
+        // Read-only, so one seeded database serves every test in the class.
+        (var connectionString, _assignedAssetId, _archivedAssetId, _assignedAt) = await fixture.SharedAsync(nameof(AssetListTests), SeedAsync);
+        _api = new TestApiFactory(connectionString, settings: new Dictionary<string, string?> { ["RateLimiting:PermitLimit"] = "1000" });
+    }
+
+    public Task DisposeAsync() => Task.CompletedTask;
+
+    public void Dispose() => _api?.Dispose();
+
+    private async Task<(string ConnectionString, int AssignedAssetId, int ArchivedAssetId, DateTimeOffset AssignedAt)> SeedAsync()
+    {
         var connectionString = await fixture.CreateMigratedDatabaseAsync();
         var dell = Brand.Create("Dell");
         var latitude = AssetModel.Create(dell, "Latitude 5440");
@@ -55,9 +66,9 @@ public sealed class AssetListTests(SqlServerDatabaseFixture fixture) : IAsyncLif
             New("DMR-0004", hp, ankara, accounting),
         };
         var assigned = assets[4];
-        _assignedAt = fixture.Clock.GetUtcNow();
-        var employee = Employee.Create(Guid.NewGuid(), "ayse.yilmaz", "Ayşe Yılmaz", null, "Muhasebe", null, isActive: true, _assignedAt);
-        assigned.Assign(employee, "Dizüstü + çanta", notes: null, assignedBy: "mehmet.admin", _assignedAt);
+        var assignedAt = fixture.Clock.GetUtcNow();
+        var employee = Employee.Create(Guid.NewGuid(), "ayse.yilmaz", "Ayşe Yılmaz", null, "Muhasebe", null, isActive: true, assignedAt);
+        assigned.Assign(employee, "Dizüstü + çanta", notes: null, assignedBy: "mehmet.admin", assignedAt);
 
         var archived = New("DMR-0000", hp, ankara, it);
         archived.Archive();
@@ -69,14 +80,8 @@ public sealed class AssetListTests(SqlServerDatabaseFixture fixture) : IAsyncLif
             await context.SaveChangesAsync();
         }
 
-        _assignedAssetId = assigned.Id;
-        _archivedAssetId = archived.Id;
-        _api = new TestApiFactory(connectionString, settings: new Dictionary<string, string?> { ["RateLimiting:PermitLimit"] = "1000" });
+        return (connectionString, assigned.Id, archived.Id, assignedAt);
     }
-
-    public Task DisposeAsync() => Task.CompletedTask;
-
-    public void Dispose() => _api?.Dispose();
 
     [SqlServerFact]
     public async Task The_first_page_lists_the_active_assets_in_code_order_with_totals()
