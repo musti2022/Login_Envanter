@@ -251,16 +251,18 @@ describe('editing an asset', () => {
     const { router, queryClient } = renderWithRouter('/envanter/1/duzenle')
     expect(await screen.findByRole('textbox', { name: 'Bilgisayar Adı' })).toHaveValue('PC-V1')
 
-    // Someone else saves; this page happens to fetch the asset again.
+    // Someone else saves; this page happens to fetch the asset again (since day 28, after a live notification). The
+    // user is warned, and the edit stays on the version it started from.
     version = 2
     await act(() => queryClient.invalidateQueries({ queryKey: assetQueryKey(1) }))
+    expect(await screen.findByText(/siz düzenlerken başka bir kullanıcı tarafından değiştirildi\. Şimdi kaydederseniz/)).toBeInTheDocument()
     expect(textbox('Bilgisayar Adı')).toHaveValue('PC-V1')
 
     fireEvent.change(textbox('Seri No'), { target: { value: 'SN-BENIM' } })
     fireEvent.click(screen.getByRole('button', { name: 'Kaydet' }))
 
-    const alert = await screen.findByRole('alert')
-    expect(alert).toHaveTextContent('Kayıt siz düzenlerken başka bir kullanıcı tarafından değiştirildi.')
+    const alert = (await screen.findByText('Kayıt siz düzenlerken başka bir kullanıcı tarafından değiştirildi.')).closest('[role="alert"]') as HTMLElement
+    expect(alert).toHaveTextContent('Değişiklikleriniz kaydedilmedi.')
     expect(writes(requests, 'PUT').map((r) => (r.body as { rowVersion: string }).rowVersion)).toEqual(['v1'])
     expect(router.state.location.pathname).toBe('/envanter/1/duzenle')
 

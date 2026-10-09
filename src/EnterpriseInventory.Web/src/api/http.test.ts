@@ -1,4 +1,4 @@
-import { ApiError, apiFetch, onUnauthorized, setCsrfToken } from './http'
+import { ApiError, apiFetch, inBackground, onUnauthorized, setCsrfToken } from './http'
 import { json, mockApi } from '../test/mockApi'
 
 describe('apiFetch', () => {
@@ -85,5 +85,21 @@ describe('apiFetch', () => {
 
     expect(error).toBeInstanceOf(ApiError)
     expect(error).toMatchObject({ status: 429, code: 'rate_limited', retryAfterSeconds: 30, message: 'Çok fazla istek.' })
+  })
+
+  it('marks the reads started inside inBackground, and only those, as background requests', async () => {
+    const requests = mockApi({
+      'GET /api/auth/csrf': json(200, { token: 'token-1' }),
+      'GET /api/things': json(200, {}),
+      'POST /api/things': json(200, {}),
+    })
+
+    const background = inBackground(() => apiFetch('/api/things'))
+    const write = inBackground(() => apiFetch('/api/things', { method: 'POST' }))
+    await Promise.all([background, write, apiFetch('/api/things')])
+
+    const marked = requests.map((r) => `${r.method} ${r.path} ${r.headers['x-background-request'] ?? '-'}`)
+    // A write is always the user's own doing; the read made after inBackground returned is too.
+    expect(marked).toEqual(['GET /api/things 1', 'GET /api/auth/csrf -', 'GET /api/things -', 'POST /api/things -'])
   })
 })

@@ -4,6 +4,8 @@ import { useTheme } from '@mui/material/styles'
 import { useState } from 'react'
 import { Outlet } from 'react-router'
 import { brandColors } from '../app/theme'
+import { LiveStatus } from '../realtime/LiveStatus'
+import { useLiveUpdates } from '../realtime/useLiveUpdates'
 import { SidebarContent } from './SidebarContent'
 import { UserMenu } from './UserMenu'
 
@@ -20,6 +22,7 @@ export function AppLayout() {
   const theme = useTheme()
   const isDesktop = useMediaQuery(theme.breakpoints.up('md'))
   const [mobileOpen, setMobileOpen] = useState(false)
+  const liveState = useLiveUpdates()
 
   const closeMobileDrawer = () => setMobileOpen(false)
 
@@ -62,7 +65,10 @@ export function AppLayout() {
           <Typography variant="h6" component="div" color="primary" noWrap sx={{ fontWeight: 600 }}>
             Kurumsal Envanter Yönetim Sistemi
           </Typography>
-          <UserMenu />
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, ml: 'auto', minWidth: 0 }}>
+            <LiveStatus state={liveState} />
+            <UserMenu />
+          </Box>
         </Toolbar>
       </AppBar>
 

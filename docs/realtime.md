@@ -1,11 +1,12 @@
-# Canlı bildirimler (26–27. gün)
+# Canlı bildirimler (26–28. gün)
 
 Kod: `src/EnterpriseInventory.Api/Realtime`, `src/EnterpriseInventory.Api/Security/SessionCookieEvents.cs`,
 `src/EnterpriseInventory.Infrastructure/Identity/UserSessionService.cs` (`CheckAsync`),
 `src/EnterpriseInventory.Application/Assets/AssetChanges.cs`. Testler:
 `tests/EnterpriseInventory.IntegrationTests/Realtime/InventoryHubTests.cs`,
 `tests/EnterpriseInventory.IntegrationTests/Realtime/AssetEventTests.cs`,
-`tests/EnterpriseInventory.UnitTests/Assets/AssetChangePublisherTests.cs`.
+`tests/EnterpriseInventory.UnitTests/Assets/AssetChangePublisherTests.cs`; web: `src/EnterpriseInventory.Web/src/realtime`,
+`src/EnterpriseInventory.Web/e2e/live.spec.ts`.
 
 ## Hub: `/hubs/inventory`
 
@@ -80,6 +81,35 @@ Kod: `src/EnterpriseInventory.Api/Realtime`, `src/EnterpriseInventory.Api/Securi
 - Olaylar yalnızca bir ipucudur: ekran güncel veriyi API'den okur (28. gün). Kaçan bir olay (ör. süreç commit ile
   gönderim arasında durursa) veri kaybı değildir; ekran yeniden bağlanınca veya yenilenince eşitlenir (29. gün).
 
+## Ekranların canlı yenilenmesi (28. gün)
+
+- Oturum açmış kullanıcı uygulamanın herhangi bir sayfasındayken tek bir hub bağlantısı açılır (`useLiveUpdates`,
+  `AppLayout` içinde); oturum kapanınca veya uygulamadan çıkılınca bağlantı kapatılır. Giriş sayfasında bağlantı yoktur.
+- Bağlantının ilk isteği (negotiate) ve Long Polling gönderimleri, API istekleri gibi `X-CSRF-TOKEN` başlığı taşır;
+  token reddedilirse bir kez yenilenip tekrar denenir. Token yalnızca bellekte tutulur.
+- Bir olay geldiğinde TanStack Query önbelleği geçersiz kılınır ve **veri yalnızca API'den okunur** (olay veri
+  taşımaz):
+
+  | Ne yenilenir | Hangi olayda |
+  | --- | --- |
+  | Envanter listeleri (her sayfa, filtre ve sıralama) | Her demirbaş olayında |
+  | Gösterge paneli | Her demirbaş olayında |
+  | Demirbaş detayı, geçmişi ve zimmet geçmişi | Yalnızca o demirbaşın olayında |
+
+  Ekranda görünen sorgular hemen, diğerleri bir sonraki gösterimde yeniden alınır.
+- Bu yenileme istekleri `X-Background-Request: 1` başlığı taşır. Sunucu oturumu yine kontrol eder (bitmişse `401`)
+  ama isteği **kullanıcı etkinliği saymaz**: başkalarının değişiklikleriyle sürekli yenilenen, başında kimsenin
+  olmadığı bir ekran oturumu boşta kalma süresinin ötesine taşıyamaz. Başlık yalnızca GET/HEAD isteklerinde geçerlidir
+  ve oturumu ancak kısaltabilir, uzatamaz.
+- Düzenleme sayfası açıkken başka bir kullanıcı aynı demirbaşı kaydederse form kullanıcının yazdıklarını korur ve
+  "Bu demirbaş siz düzenlerken başka bir kullanıcı tarafından değiştirildi. Şimdi kaydederseniz kayıt çakışması
+  uyarısı alırsınız." uyarısı çıkar; "Güncel kaydı yükle" ile yeni sürüme geçilir. Form hiçbir zaman sessizce yeni
+  sürüme taşınmaz; eski sürümle kaydetmek `409` ile reddedilir. Açık diyaloglar (zimmet, iade, konum, arşiv) da
+  açıldıkları sürümle çalışır.
+- Üst çubuktaki durum göstergesi (`role="status"`): **Canlı** (yeşil), **Bağlanıyor** (gri), **Canlı güncelleme
+  yok** (turuncu; diğer kullanıcıların değişiklikleri otomatik görünmez). Telefonda yalnızca renkli nokta görünür,
+  metin ekran okuyucuya okunur; açıklama ipucunda yazar.
+
 ## Birden fazla sunucu
 
 Açık bağlantıların listesi (`HubConnectionRegistry`) ve olay kuyruğu her sunucunun kendi belleğindedir. Çıkış,
@@ -131,6 +161,10 @@ Events'e veya Long Polling'e düşer; bağlantı çalışır ama daha fazla iste
 | `A_change_that_is_rolled_back_is_not_announced` | Audit kaydı yazılamayıp geri alınan taşıma olay üretmez |
 | `A_failing_notifier_neither_fails_nor_undoes_a_committed_change` | Bildirim katmanı hata verse de istek başarılı, veri ve audit kaydı yerinde |
 | `AssetChangePublisherTests` (birim) | Yalnızca başarılı ve bir şey değiştiren yazmalar yayımlanır; bildirim hatası loglanır, sonuç değişmez |
+| `A_background_read_is_checked_but_does_not_keep_an_idle_session_alive` | `X-Background-Request` taşıyan okuma oturumu uzatmaz; yazma isteği başlıkla bile etkinlik sayılır |
+| `LiveUpdates.test.tsx` (Vitest) | Bağlanma ve durum göstergesi; detay sayfası başka kullanıcının değişikliğini arka plan okumasıyla gösterir; altı olayın her biri listeyi ve gösterge panelini yeniler; başka demirbaşın olayı detayı yenilemez; bağlantı kopunca ve kurulamayınca gösterge uyarır; sayfadan çıkınca bağlantı kapanır; düzenlemede uyarı ve "Güncel kaydı yükle" |
+| `inventoryHub.test.ts` (Vitest) | Hub istekleri CSRF token'ı taşır; reddedilen token bir kez yenilenir; `401` aynen iletilir |
+| `live.spec.ts` (Playwright, iki tarayıcı) | Başka bilgisayardaki yöneticinin konum değişikliği detay sayfasına sayfa yenilenmeden yansır (arka plan okumasıyla); başka ekranda eklenen demirbaş açık listede görünür; düzenleme sırasında başka ekranda yapılan kayıt uyarı olarak gösterilir, yazılanlar korunur |
 
 Testler gerçek SQL Server ile çalışır. 26. gün testlerinde saat bir test saatidir ve AD, cevabını her testin
 belirlediği bir test dublörüdür (gerçek AD kontrolü `SambaAccessCheckTests` içindedir); 27. gün testlerinde

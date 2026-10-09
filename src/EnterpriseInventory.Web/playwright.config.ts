@@ -22,6 +22,7 @@ const password = process.env.EI_E2E_PASSWORD
 
 const fakeUsers = [
   { UserName: 'e2e.admin', DisplayName: 'E2E Yönetici' },
+  { UserName: 'e2e.colleague', DisplayName: 'E2E İkinci Yönetici' },
   { UserName: 'e2e.outsider', DisplayName: 'E2E Grup Dışı', IsAllowedGroupMember: 'false', Department: 'Muhasebe' },
   { UserName: 'e2e.disabled', DisplayName: 'E2E Pasif', IsDisabled: 'true' },
 ]

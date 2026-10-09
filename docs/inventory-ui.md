@@ -1,4 +1,4 @@
-# Envanter ekranları (16–20., 24. ve 25. gün)
+# Envanter ekranları (16–20., 24., 25. ve 28. gün)
 
 Kod: `src/EnterpriseInventory.Web/src/pages` (`DashboardPage`, `InventoryPage`, `AssetCreatePage`, `AssetEditPage`,
 `AssetDetailPage`) ve `src/EnterpriseInventory.Web/src/inventory`. Testler: aynı klasörlerdeki `*.test.ts(x)`
@@ -95,6 +95,13 @@ Detay sayfasında, arşivlenmemiş demirbaşta:
   kaydı gösterir ve gönderim kapanır. Başarılıysa "DMR-0001 konumu değiştirildi." ve geçmişte "Konumu değişti:
   Şehir: İzmir → Bursa" kaydı görünür.
 - Tam düzenleme formu da şehir/lokasyon/departmanı değiştirebilir; iki yol da aynı sunucu kurallarından geçer.
+
+## Canlı yenileme (28. gün)
+
+Başka bir kullanıcının yaptığı ekleme, düzenleme, arşivleme, zimmet, iade ve konum değişikliği; açık listeye,
+gösterge paneline, detay sayfasına, geçmişe ve zimmet geçmişine sayfa yenilenmeden yansır. Düzenleme sırasında gelen
+değişiklik formu ezmez, uyarı olarak gösterilir. Üst çubuktaki gösterge bağlantının durumunu söyler. Ayrıntılar ve
+testler: [`realtime.md`](realtime.md#ekranların-canlı-yenilenmesi-28-gün).
 
 ## Test sonuçları
 

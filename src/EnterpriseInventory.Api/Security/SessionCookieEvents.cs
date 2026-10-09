@@ -30,10 +30,18 @@ internal sealed class SessionCookieEvents(IUserSessionService sessions) : Cookie
     }
 
     /// <summary>
-    /// Whether the request is the user's own doing. The live connection's traffic is not: an open page must not keep
-    /// an idle session alive.
+    /// Marks a read the user did not ask for, such as a screen refreshing itself after a live notification. Only
+    /// reads can be marked; the header can only shorten a session, never extend one.
     /// </summary>
-    private static bool IsActivity(HttpRequest request) => !request.Path.StartsWithSegments(SameOriginHubMiddleware.HubsPath);
+    public const string BackgroundHeaderName = "X-Background-Request";
+
+    /// <summary>
+    /// Whether the request is the user's own doing. The live connection's traffic and background reads are not: an
+    /// open page must not keep an idle session alive.
+    /// </summary>
+    private static bool IsActivity(HttpRequest request) =>
+        !request.Path.StartsWithSegments(SameOriginHubMiddleware.HubsPath)
+        && !((HttpMethods.IsGet(request.Method) || HttpMethods.IsHead(request.Method)) && request.Headers[BackgroundHeaderName] == "1");
 
     // An API answers with status codes instead of redirecting to a login page.
     public override Task RedirectToLogin(RedirectContext<CookieAuthenticationOptions> context) =>

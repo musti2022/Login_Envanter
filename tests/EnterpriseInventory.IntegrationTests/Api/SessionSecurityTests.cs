@@ -211,6 +211,31 @@ public sealed class SessionSecurityTests(SqlServerDatabaseFixture database) : IA
     }
 
     [SqlServerFact]
+    public async Task A_background_read_is_checked_but_does_not_keep_an_idle_session_alive()
+    {
+        // Day 28: a screen refreshing itself after a live notification marks its reads as background reads.
+        var api = Api();
+        using var client = api.CreateAnonymousClient();
+        var token = await client.SignInAsync(_directory.UserName, ControllableDirectory.Password);
+
+        Assert.Equal(HttpStatusCode.OK, await BackgroundStatusAfter(client, TimeSpan.FromMinutes(19)));
+
+        // The header only counts on reads: a write is always the user's own doing.
+        _clock.Advance(TimeSpan.FromSeconds(30));
+        using (var request = new HttpRequestMessage(HttpMethod.Post, new Uri("/api/no-such-endpoint", UriKind.Relative)))
+        {
+            request.Headers.Add("X-Background-Request", "1");
+            request.Headers.Add(AuthClient.CsrfHeader, token);
+            using var write = await client.SendAsync(request);
+            Assert.Equal(HttpStatusCode.NotFound, write.StatusCode);
+        }
+
+        Assert.Equal(HttpStatusCode.OK, await BackgroundStatusAfter(client, TimeSpan.FromMinutes(19)));
+        Assert.Equal(HttpStatusCode.Unauthorized, await BackgroundStatusAfter(client, TimeSpan.FromMinutes(2)));
+        Assert.Equal(SessionEndReason.IdleTimeout, (await SingleSessionAsync()).EndReason);
+    }
+
+    [SqlServerFact]
     public async Task A_session_ends_eight_hours_after_sign_in_however_active()
     {
         var api = Api();
@@ -369,6 +394,15 @@ public sealed class SessionSecurityTests(SqlServerDatabaseFixture database) : IA
     {
         _clock.Advance(wait);
         using var response = await client.GetAsync(AuthClient.Me);
+        return response.StatusCode;
+    }
+
+    private async Task<HttpStatusCode> BackgroundStatusAfter(HttpClient client, TimeSpan wait)
+    {
+        _clock.Advance(wait);
+        using var request = new HttpRequestMessage(HttpMethod.Get, AuthClient.Me);
+        request.Headers.Add("X-Background-Request", "1");
+        using var response = await client.SendAsync(request);
         return response.StatusCode;
     }
 

@@ -132,7 +132,8 @@ test('an edit made on an outdated version is refused and redone on the current o
 
   await page.getByRole('textbox', { name: 'Seri No' }).fill(`${prefix}-SN-BENIM`)
   await page.getByRole('button', { name: 'Kaydet' }).click()
-  const alert = page.getByRole('alert')
+  // The live warning above the form may say so too; the refusal is the form's own alert.
+  const alert = page.getByRole('form', { name: 'Demirbaş düzenleme formu' }).getByRole('alert')
   await expect(alert).toContainText('başka bir kullanıcı tarafından değiştirildi')
   expect((await client.get<Asset>(`/api/assets/${created.id}`)).serialNumber).toBeNull()
 

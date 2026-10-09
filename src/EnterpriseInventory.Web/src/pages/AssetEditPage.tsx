@@ -82,9 +82,30 @@ export function AssetEditPage() {
     )
   }
 
+  // A live notification refetched the asset and someone else has saved it since this edit started.
+  const newer = asset.data && asset.data.id === current.id && asset.data.rowVersion !== current.rowVersion ? asset.data : null
+  const loadNewer = (version: AssetDetails) => {
+    setBase(version)
+    setReloaded(true)
+  }
+
   return (
     <>
       {header}
+      {newer && (
+        <Alert
+          severity="warning"
+          sx={{ mb: 2 }}
+          action={
+            <Button color="inherit" size="small" onClick={() => loadNewer(newer)}>
+              Güncel kaydı yükle
+            </Button>
+          }
+        >
+          Bu demirbaş siz düzenlerken başka bir kullanıcı tarafından değiştirildi. Şimdi kaydederseniz kayıt çakışması
+          uyarısı alırsınız.
+        </Alert>
+      )}
       {reloaded && (
         <Alert severity="info" sx={{ mb: 2 }} onClose={() => setReloaded(false)}>
           Kaydın güncel hali yüklendi. Değişikliklerinizi yeniden yapıp kaydedin.
@@ -104,8 +125,7 @@ export function AssetEditPage() {
         onReload={async () => {
           const fresh = await asset.refetch()
           if (fresh.data) {
-            setBase(fresh.data)
-            setReloaded(true)
+            loadNewer(fresh.data)
           }
         }}
       />

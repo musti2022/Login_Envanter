@@ -34,11 +34,19 @@ export class ApiError extends Error {
 }
 
 export const csrfHeaderName = 'X-CSRF-TOKEN'
+
+/**
+ * Marks a read the user did not ask for (a refresh after a live notification): the API still checks the session but
+ * does not count the request as activity, so an unattended screen cannot keep an idle session alive.
+ */
+export const backgroundHeaderName = 'X-Background-Request'
+
 const csrfPath = '/api/auth/csrf'
 const safeMethods = new Set(['GET', 'HEAD', 'OPTIONS'])
 
 let csrfToken: string | null = null
 let unauthorizedHandler: (() => void) | null = null
+let backgroundDepth = 0
 
 /** Replaces the CSRF token, e.g. with the one the sign-in response carries; null forgets it. */
 export function setCsrfToken(token: string | null) {
@@ -53,6 +61,29 @@ export function onUnauthorized(handler: () => void): () => void {
       unauthorizedHandler = null
     }
   }
+}
+
+/**
+ * Runs work whose reads are background reads (see backgroundHeaderName). Only requests sent while the work runs
+ * synchronously are marked: TanStack Query starts the refetches of invalidateQueries before it returns.
+ */
+export function inBackground<T>(work: () => T): T {
+  backgroundDepth++
+  try {
+    return work()
+  } finally {
+    backgroundDepth--
+  }
+}
+
+/** The CSRF token for a state-changing request made outside apiFetch (the live connection); fetched if missing. */
+export function csrfTokenFor(signal?: AbortSignal): Promise<string> {
+  return csrfToken ? Promise.resolve(csrfToken) : fetchCsrfToken(signal)
+}
+
+/** Fetches a new CSRF token after the API refused the one in hand. */
+export function renewCsrfToken(signal?: AbortSignal): Promise<string> {
+  return fetchCsrfToken(signal)
 }
 
 export interface ApiRequestOptions {
@@ -99,6 +130,9 @@ function send(path: string, method: string, options: ApiRequestOptions, token?: 
   }
   if (token) {
     headers[csrfHeaderName] = token
+  }
+  if (backgroundDepth > 0 && safeMethods.has(method)) {
+    headers[backgroundHeaderName] = '1'
   }
 
   return fetch(path, {

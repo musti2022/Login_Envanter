@@ -4,17 +4,25 @@ import { expect, type APIRequestContext, type Page } from '@playwright/test'
 export const password = process.env.EI_E2E_PASSWORD ?? ''
 export const member = 'e2e.admin'
 
+/** A second Bim_Envanter member, for what one administrator sees of another's work. */
+export const colleague = 'e2e.colleague'
+
 export async function signIn(page: Page, userName: string, secret: string) {
   await page.getByLabel('Kullanıcı adı').fill(userName)
   await page.getByLabel('Parola', { exact: true }).fill(secret)
   await page.getByRole('button', { name: 'Giriş Yap' }).click()
 }
 
-/** Signs in as the Bim_Envanter member and waits for the dashboard. */
-export async function signInAsMember(page: Page) {
+/** Signs in as the Bim_Envanter member (or another member) and waits for the dashboard. */
+export async function signInAsMember(page: Page, userName = member) {
   await page.goto('/giris')
-  await signIn(page, member, password)
+  await signIn(page, userName, password)
   await expect(page.getByRole('heading', { name: 'Gösterge Paneli' })).toBeVisible()
+}
+
+/** The header's live update indicator. */
+export function liveStatus(page: Page) {
+  return page.getByRole('status', { name: 'Canlı güncelleme durumu' })
 }
 
 /**
