@@ -141,13 +141,13 @@ describe('adding an asset', () => {
       ...csrf,
       'GET /api/brands': () => json(200, brandList),
       'POST /api/brands': ({ body }) => {
-        const brand = { id: 4, name: (body as { name: string }).name, isActive: true }
+        const brand = { id: 4, name: (body as { name: string }).name, isActive: true, rowVersion: 'AAAAAAAAA40=' }
         brandList.push(brand)
         return json(201, brand)
       },
       'GET /api/models': ({ path }) => json(200, modelList.filter((m) => path.endsWith(`brandId=${m.brandId}`))),
       'POST /api/models': ({ body }) => {
-        const model = { id: 40, name: (body as { name: string }).name, isActive: true, brandId: 4, brandName: 'Lenovo' }
+        const model = { id: 40, name: (body as { name: string }).name, isActive: true, brandId: 4, brandName: 'Lenovo', rowVersion: 'AAAAAAAAA41=' }
         modelList.push(model)
         return json(201, model)
       },

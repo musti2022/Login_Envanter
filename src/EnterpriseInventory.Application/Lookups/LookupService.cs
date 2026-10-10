@@ -1,3 +1,4 @@
+using EnterpriseInventory.Application.Assets;
 using FluentValidation;
 
 namespace EnterpriseInventory.Application.Lookups;
@@ -7,6 +8,7 @@ public sealed class LookupService(
     IValidator<CreateLookupRequest> lookupValidator,
     IValidator<CreateModelRequest> modelValidator,
     IValidator<CreateLocationRequest> locationValidator,
+    IValidator<UpdateLookupRequest> updateValidator,
     ILookupStore store)
 {
     public Task<IReadOnlyList<LookupItem>> ListAsync(LookupKind kind, CancellationToken cancellationToken) => store.ListAsync(kind, cancellationToken);
@@ -45,5 +47,26 @@ public sealed class LookupService(
         return validation.IsValid
             ? await store.CreateLocationAsync(request.CityId!.Value, request.Name!.Trim(), cancellationToken).ConfigureAwait(false)
             : LookupWriteResult.Invalid<LocationItem>(validation.ToDictionary());
+    }
+
+    public Task<LookupWriteResult<LookupItem>> UpdateAsync(LookupKind kind, int id, UpdateLookupRequest request, CancellationToken cancellationToken) =>
+        UpdateAsync(request, (name, isActive, rowVersion) => store.UpdateAsync(kind, id, name, isActive, rowVersion, cancellationToken), cancellationToken);
+
+    public Task<LookupWriteResult<ModelItem>> UpdateModelAsync(int id, UpdateLookupRequest request, CancellationToken cancellationToken) =>
+        UpdateAsync(request, (name, isActive, rowVersion) => store.UpdateModelAsync(id, name, isActive, rowVersion, cancellationToken), cancellationToken);
+
+    public Task<LookupWriteResult<LocationItem>> UpdateLocationAsync(int id, UpdateLookupRequest request, CancellationToken cancellationToken) =>
+        UpdateAsync(request, (name, isActive, rowVersion) => store.UpdateLocationAsync(id, name, isActive, rowVersion, cancellationToken), cancellationToken);
+
+    private async Task<LookupWriteResult<T>> UpdateAsync<T>(
+        UpdateLookupRequest request, Func<string, bool, byte[], Task<LookupWriteResult<T>>> update, CancellationToken cancellationToken)
+        where T : class
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var validation = await updateValidator.ValidateAsync(request, cancellationToken).ConfigureAwait(false);
+        return validation.IsValid
+            ? await update(request.Name!.Trim(), request.IsActive!.Value, AssetRowVersion.Decode(request.RowVersion)).ConfigureAwait(false)
+            : LookupWriteResult.Invalid<T>(validation.ToDictionary());
     }
 }

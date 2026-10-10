@@ -115,3 +115,23 @@ test('a missing asset and a page that does not exist say so on a phone too', asy
   await expect(page.getByText('Aradığınız sayfa bulunamadı')).toBeVisible()
   await expectToFitTheWidth(page)
 })
+
+test('the assignments and definitions screens fit a phone', async ({ page }, testInfo) => {
+  await signInAsMember(page)
+
+  for (const [path, heading, name] of [
+    ['/zimmetler', 'Zimmetler', 'zimmetler'],
+    ['/tanimlar/marka-model', 'Marka ve Modeller', 'marka-model'],
+    ['/tanimlar/lokasyonlar', 'Lokasyonlar', 'lokasyonlar'],
+  ]) {
+    await page.goto(path)
+    await expect(page.getByRole('heading', { name: heading, level: 1 })).toBeVisible()
+    await expect(page.getByRole('progressbar')).toHaveCount(0)
+    await expectToFitTheWidth(page)
+    await screenshot(page, testInfo, name)
+  }
+
+  await page.getByRole('region', { name: /^Şehirler/ }).getByRole('button', { name: /düzenle$/ }).first().click()
+  await expect(page.getByRole('dialog', { name: 'Şehir düzenle' })).toBeVisible()
+  await expectToFitTheWidth(page)
+})

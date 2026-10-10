@@ -7,6 +7,8 @@ export interface LookupItem {
   id: number
   name: string
   isActive: boolean
+  /** Sent back with a change, to prove which version was edited. */
+  rowVersion: string
 }
 
 export interface ModelItem extends LookupItem {
@@ -58,6 +60,32 @@ export function locationsQuery(cityId: number | null) {
     enabled: cityId !== null,
     staleTime,
   })
+}
+
+/** Every model, of every brand: the definitions screen lists them all. */
+export const allModelsQuery = queryOptions({
+  queryKey: [...lookupsQueryKey, 'models', 'all'],
+  queryFn: ({ signal }) => apiFetch<ModelItem[]>('/api/models', { signal }),
+  staleTime,
+})
+
+/** Every location, of every city. */
+export const allLocationsQuery = queryOptions({
+  queryKey: [...lookupsQueryKey, 'locations', 'all'],
+  queryFn: ({ signal }) => apiFetch<LocationItem[]>('/api/locations', { signal }),
+  staleTime,
+})
+
+/** A rename, deactivation or reactivation. A model keeps its brand and a location its city. */
+export interface LookupChange {
+  name: string
+  isActive: boolean
+  rowVersion: string
+}
+
+/** `PUT /api/brands/1` and the like; a stale row version is refused with `409 concurrency_conflict`. */
+export function updateLookup<T extends LookupItem>(path: string, id: number, change: LookupChange) {
+  return apiFetch<T>(`${path}/${id}`, { method: 'PUT', body: change })
 }
 
 /** The name as a list shows it: inactive lookups are marked. */

@@ -1,4 +1,4 @@
-using EnterpriseInventory.Domain.Assets;
+using EnterpriseInventory.Domain.Common;
 using EnterpriseInventory.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -12,9 +12,10 @@ internal static class AssetVersions
     /// lands between this read and the save is caught by the database (<see cref="DbUpdateConcurrencyException"/>)
     /// and nothing is overwritten.
     /// </summary>
-    public static bool MatchesClientVersion(this ApplicationDbContext db, Asset asset, byte[] rowVersion)
+    public static bool MatchesClientVersion<T>(this ApplicationDbContext db, T entity, byte[] rowVersion)
+        where T : AuditableEntity
     {
-        db.Entry(asset).Property(a => a.RowVersion).OriginalValue = rowVersion;
-        return asset.RowVersion.AsSpan().SequenceEqual(rowVersion);
+        db.Entry(entity).Property(e => e.RowVersion).OriginalValue = rowVersion;
+        return entity.RowVersion.AsSpan().SequenceEqual(rowVersion);
     }
 }

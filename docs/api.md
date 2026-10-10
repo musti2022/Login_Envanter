@@ -1,8 +1,8 @@
 # API altyapısı (5. gün), giriş (7–8. gün) ve oturum (9. gün)
 
 Kod: `src/EnterpriseInventory.Api`. Testler: `tests/EnterpriseInventory.IntegrationTests/Api`. Demirbaş uç
-noktaları (11–15. gün) ayrı dokümanda: [`assets-api.md`](assets-api.md); tanım listeleri (18. gün):
-[`lookups-api.md`](lookups-api.md).
+noktaları (11–15. gün) ayrı dokümanda: [`assets-api.md`](assets-api.md); tanım listeleri, ekleme ve değiştirme
+(18. ve 40. gün): [`lookups-api.md`](lookups-api.md).
 
 ## Health endpoint'leri
 

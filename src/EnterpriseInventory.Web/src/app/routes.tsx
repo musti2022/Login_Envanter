@@ -5,11 +5,12 @@ import { AssetCreatePage } from '../pages/AssetCreatePage'
 import { AssetDetailPage } from '../pages/AssetDetailPage'
 import { AssetEditPage } from '../pages/AssetEditPage'
 import { AuditLogPage } from '../pages/AuditLogPage'
+import { BrandsModelsPage } from '../pages/BrandsModelsPage'
 import { DashboardPage } from '../pages/DashboardPage'
 import { InventoryPage } from '../pages/InventoryPage'
+import { LocationsPage } from '../pages/LocationsPage'
 import { LoginPage } from '../pages/LoginPage'
 import { NotFoundPage } from '../pages/NotFoundPage'
-import { PlaceholderPage } from '../pages/PlaceholderPage'
 import { ReportsPage } from '../pages/ReportsPage'
 import { RouteErrorPage } from '../pages/RouteErrorPage'
 
@@ -28,39 +29,9 @@ export const routes: RouteObject[] = [
           { path: 'envanter/yeni', element: <AssetCreatePage /> },
           { path: 'envanter/:id', element: <AssetDetailPage /> },
           { path: 'envanter/:id/duzenle', element: <AssetEditPage /> },
-          {
-            path: 'zimmetler',
-            element: (
-              <PlaceholderPage
-                title="Zimmetler"
-                description="Demirbaş zimmetlerini oluşturun, iade alın ve geçmişi görüntüleyin."
-                emptyTitle="Henüz zimmet kaydı yok"
-                emptyDescription="Zimmet işlemleri ve Active Directory çalışan araması sonraki aşamada eklenecek."
-              />
-            ),
-          },
-          {
-            path: 'tanimlar/lokasyonlar',
-            element: (
-              <PlaceholderPage
-                title="Lokasyonlar"
-                description="Şehir, departman ve lokasyon tanımlarını yönetin."
-                emptyTitle="Henüz lokasyon tanımı yok"
-                emptyDescription="Şehir, departman ve lokasyon yönetimi sonraki aşamada eklenecek."
-              />
-            ),
-          },
-          {
-            path: 'tanimlar/marka-model',
-            element: (
-              <PlaceholderPage
-                title="Marka ve Modeller"
-                description="Demirbaş marka ve model tanımlarını yönetin."
-                emptyTitle="Henüz marka veya model tanımı yok"
-                emptyDescription="Marka ve model yönetimi sonraki aşamada eklenecek."
-              />
-            ),
-          },
+          { path: 'zimmetler', element: <InventoryPage assignedOnly /> },
+          { path: 'tanimlar/lokasyonlar', element: <LocationsPage /> },
+          { path: 'tanimlar/marka-model', element: <BrandsModelsPage /> },
           { path: 'raporlar', element: <ReportsPage /> },
           { path: 'raporlar/zimmet-hareketleri', element: <ReportsPage /> },
           { path: 'denetim-gecmisi', element: <AuditLogPage /> },

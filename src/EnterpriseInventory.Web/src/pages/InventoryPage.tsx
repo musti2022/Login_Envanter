@@ -1,4 +1,5 @@
 import AddIcon from '@mui/icons-material/Add'
+import TimelineIcon from '@mui/icons-material/Timeline'
 import { Box, Button, Card, LinearProgress } from '@mui/material'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { Link as RouterLink, useSearchParams } from 'react-router'
@@ -21,9 +22,21 @@ import {
 import { ColumnMenu } from '../inventory/ColumnMenu'
 import { activeFilterCount, clearedFilters, parseListParams } from '../inventory/listParams'
 
-export function InventoryPage() {
+interface InventoryPageProps {
+  /**
+   * "Zimmetler": only the assets assigned now, with the employee they are assigned to. Assigning and taking back
+   * happen on the asset's page, where the row leads.
+   */
+  assignedOnly?: boolean
+}
+
+export function InventoryPage({ assignedOnly = false }: InventoryPageProps) {
   const [searchParams, setSearchParams] = useSearchParams()
-  const params = parseListParams(searchParams)
+  // On "Zimmetler" the state is fixed: the filters do not offer it and the request always carries it.
+  const filters: AssetListParams = assignedOnly
+    ? { ...parseListParams(searchParams), status: [], archived: false }
+    : parseListParams(searchParams)
+  const params: AssetListParams = assignedOnly ? { ...filters, status: ['Assigned'] } : filters
   const { hiddenInventoryColumns: hiddenColumns, setHiddenInventoryColumns: setHiddenColumns } = usePreferences()
 
   const assets = useQuery({
@@ -47,20 +60,30 @@ export function InventoryPage() {
   return (
     <>
       <PageHeader
-        title="Envanter"
-        description="Demirbaşları listeleyin, arayın ve yönetin."
+        title={assignedOnly ? 'Zimmetler' : 'Envanter'}
+        description={
+          assignedOnly
+            ? 'Şu an zimmetli demirbaşlar. Zimmet vermek veya iade almak için demirbaşın sayfasını açın.'
+            : 'Demirbaşları listeleyin, arayın ve yönetin.'
+        }
         actions={
           <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
             <ColumnMenu hidden={hiddenColumns} onChange={setHiddenColumns} />
             <ExportButton download={() => exportAssets(params)} disabled={assets.data?.totalCount === 0} />
-            <Button variant="contained" startIcon={<AddIcon />} component={RouterLink} to="/envanter/yeni">
-              Yeni Demirbaş
-            </Button>
+            {assignedOnly ? (
+              <Button variant="outlined" startIcon={<TimelineIcon />} component={RouterLink} to="/raporlar/zimmet-hareketleri">
+                Zimmet hareketleri
+              </Button>
+            ) : (
+              <Button variant="contained" startIcon={<AddIcon />} component={RouterLink} to="/envanter/yeni">
+                Yeni Demirbaş
+              </Button>
+            )}
           </Box>
         }
       />
       <Card>
-        <AssetFilters params={params} onChange={update} />
+        <AssetFilters params={filters} onChange={update} archiveSwitch={!assignedOnly} statusFilter={!assignedOnly} />
         <Box sx={{ height: 4 }}>{assets.isFetching && !assets.isPending && <LinearProgress aria-label="Liste yenileniyor" />}</Box>
         {assets.isPending ? (
           <LoadingState message="Demirbaşlar yükleniyor..." />
@@ -72,13 +95,23 @@ export function InventoryPage() {
               onRetry={() => void assets.refetch()}
             />
           </Box>
-        ) : assets.data.totalCount === 0 && activeFilterCount(params) > 0 ? (
+        ) : assets.data.totalCount === 0 && activeFilterCount(filters) > 0 ? (
           <EmptyState
             title="Filtrelerle eşleşen demirbaş yok"
             description="Aramayı veya filtreleri değiştirip tekrar deneyin."
             action={
               <Button variant="contained" onClick={() => update(clearedFilters)}>
                 Filtreleri temizle
+              </Button>
+            }
+          />
+        ) : assets.data.totalCount === 0 && assignedOnly ? (
+          <EmptyState
+            title="Zimmetli demirbaş yok"
+            description="Zimmet, demirbaşın sayfasındaki Zimmet Ver ile verilir."
+            action={
+              <Button variant="contained" component={RouterLink} to="/envanter">
+                Envantere git
               </Button>
             }
           />

@@ -1,3 +1,4 @@
+using EnterpriseInventory.Application.Assets;
 using EnterpriseInventory.Domain.Common;
 using FluentValidation;
 
@@ -19,6 +20,17 @@ public sealed record CreateModelRequest : CreateLookupRequest
 public sealed record CreateLocationRequest : CreateLookupRequest
 {
     public int? CityId { get; init; }
+}
+
+/// <summary>
+/// Body of <c>PUT /api/brands/{id}</c> and the other lookups: the new name and state, and the <c>rowVersion</c> the
+/// caller read. A model's brand and a location's city do not change: the assets that use them must stay consistent.
+/// </summary>
+public sealed record UpdateLookupRequest : CreateLookupRequest
+{
+    public bool? IsActive { get; init; }
+
+    public string? RowVersion { get; init; }
 }
 
 /// <summary>The name rules every lookup shares.</summary>
@@ -51,5 +63,14 @@ internal sealed class CreateLocationRequestValidator : LookupNameValidator<Creat
     public CreateLocationRequestValidator()
     {
         RuleFor(r => r.CityId).NotNull().WithMessage("Şehir seçilmelidir.").GreaterThan(0).WithMessage("Şehir geçersiz.");
+    }
+}
+
+internal sealed class UpdateLookupRequestValidator : LookupNameValidator<UpdateLookupRequest>
+{
+    public UpdateLookupRequestValidator()
+    {
+        RuleFor(r => r.IsActive).NotNull().WithMessage("Durum (isActive) zorunludur.");
+        RuleFor(r => r.RowVersion).MustBeRowVersion();
     }
 }

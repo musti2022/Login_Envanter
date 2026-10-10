@@ -39,13 +39,15 @@ interface AssetFiltersProps {
   onChange: (changes: Partial<AssetListParams>, options?: { replace?: boolean }) => void
   /** Offers "Arşivlenmişleri göster"; a report that never counts archived assets leaves it out. */
   archiveSwitch?: boolean
+  /** Offers the state filter; "Zimmetler" lists assigned assets only and leaves it out. */
+  statusFilter?: boolean
 }
 
 /**
  * Search and filters above the inventory table. Every change goes to the page address and back to page 1, so
  * the table, the address and the API request always agree. On small screens the filters fold under a button.
  */
-export function AssetFilters({ params, onChange, archiveSwitch = true }: AssetFiltersProps) {
+export function AssetFilters({ params, onChange, archiveSwitch = true, statusFilter = true }: AssetFiltersProps) {
   const theme = useTheme()
   const isDesktop = useMediaQuery(theme.breakpoints.up('md'))
   const [open, setOpen] = useState(false)
@@ -108,13 +110,15 @@ export function AssetFilters({ params, onChange, archiveSwitch = true }: AssetFi
             pt: 2,
           }}
         >
-          <MultiSelect
-            label="Durum"
-            values={params.status}
-            options={assetStatuses}
-            labels={statusLabels}
-            onChange={(status) => set({ status })}
-          />
+          {statusFilter && (
+            <MultiSelect
+              label="Durum"
+              values={params.status}
+              options={assetStatuses}
+              labels={statusLabels}
+              onChange={(status) => set({ status })}
+            />
+          )}
           <MultiSelect
             label="Tür"
             values={params.assetType}

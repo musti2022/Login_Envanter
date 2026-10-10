@@ -1,7 +1,8 @@
-# Envanter ekranları (16–20., 24., 25., 28. ve 29. gün)
+# Envanter ekranları (16–20., 24., 25., 28., 29. ve 40. gün)
 
 Kod: `src/EnterpriseInventory.Web/src/pages` (`DashboardPage`, `InventoryPage`, `AssetCreatePage`, `AssetEditPage`,
-`AssetDetailPage`) ve `src/EnterpriseInventory.Web/src/inventory`. Testler: aynı klasörlerdeki `*.test.ts(x)`
+`AssetDetailPage`, `BrandsModelsPage`, `LocationsPage`), `src/EnterpriseInventory.Web/src/inventory` ve
+`src/EnterpriseInventory.Web/src/definitions`. Testler: aynı klasörlerdeki `*.test.ts(x)`
 (Vitest, sahte API) ve `src/EnterpriseInventory.Web/e2e` (Playwright, gerçek API ve SQL Server; Development modunda
 sahte AD). Sunucu tarafı: [`assets-api.md`](assets-api.md), [`lookups-api.md`](lookups-api.md),
 [`assignments-api.md`](assignments-api.md), `GET /api/dashboard/statistics`.
@@ -103,6 +104,30 @@ Detay sayfasında, arşivlenmemiş demirbaşta:
   Şehir: İzmir → Bursa" kaydı görünür.
 - Tam düzenleme formu da şehir/lokasyon/departmanı değiştirebilir; iki yol da aynı sunucu kurallarından geçer.
 
+## Zimmetler (40. gün)
+
+- Menüdeki "Zimmetler", şu an zimmetli demirbaşları listeler: envanter tablosunun aynısı (Kullanıcı Adı ve Zimmet
+  Tanımı sütunlarıyla), aynı arama, filtre, sıralama, sayfalama ve Excel'e aktarma; istek her zaman
+  `status=Assigned` taşır. Durum filtresi ve "Arşivlenmişleri göster" yoktur, adresteki durum ve arşiv değerleri yok
+  sayılır.
+- Zimmet verme ve iade alma demirbaşın sayfasındadır; satır oraya gider. "Zimmet hareketleri" düğmesi dönemlik
+  zimmet/iade raporunu açar ([`reports.md`](reports.md)). Zimmetli demirbaş yoksa "Envantere git" önerilir.
+
+## Tanımlar (40. gün)
+
+- **Marka ve Modeller** (`/tanimlar/marka-model`) ve **Lokasyonlar** (`/tanimlar/lokasyonlar`: şehirler,
+  departmanlar, lokasyonlar). Her liste adı ve durumu (Aktif/Pasif) gösterir; model ve lokasyon listesinde üst kayıt
+  sütunu ve onunla süzme vardır.
+- "Yeni marka/model/…" ekleme penceresini açar (demirbaş formundaki pencerenin aynısı). Yeni model ve lokasyon için
+  önce aktif bir marka/şehir seçilir; seçilmeden düğme kapalıdır.
+- Kalem simgesi düzenleme penceresini açar: ad ve Aktif/Pasif anahtarı. Modelin markası ve lokasyonun şehri
+  değiştirilemez (pencerede yazar). Pencere listede okunan `rowVersion`'ı gönderir.
+- Başkası arada değiştirdiyse "Kayıt siz düzenlerken başka bir kullanıcı tarafından değiştirildi." uyarısı çıkar,
+  Kaydet kapanır ve liste yeniden okunur; kullanıcı kaydı güncel haliyle yeniden açar. Aynı ad ve pasif üst kayıt
+  hataları ilgili alanın altında gösterilir. Tanımlar silinmez; sayfadaki not bunu ve pasifleştirmenin etkisini
+  anlatır.
+- Kaydedilince bütün açık sorgular yenilenir: listelerde, filtrelerde ve raporlarda yeni ad görünür.
+
 ## Canlı yenileme (28. gün)
 
 Başka bir kullanıcının yaptığı ekleme, düzenleme, arşivleme, zimmet, iade ve konum değişikliği; açık listeye,
@@ -125,6 +150,8 @@ sayfasına gidilir. Ayrıntılar: [`realtime.md`](realtime.md#yeniden-bağlanma-
 | **24. gün** Zimmet ver/iade et (Vitest): AD araması ve seçim, gövde ve CSRF, kırpılmış tanım, zimmetli kişi ve geçmiş; boş alan hataları; 2 harften önce arama yok; dizine ulaşılamıyor; pasif hesap sonrası yeniden seçim; çakışmada uyarı ve yenileme; arızalıda kapalı düğme; onaylı iade ve geçmişte kalan dönem; iade çakışması; audit'te zimmet/iade alanları | Vitest | 100/100 geçti (tüm web testleri) |
 | **25. gün** Konum değiştirme (Vitest): mevcut değerlerle açılış, değişiklik yokken kapalı kaydet, pasif lokasyonun yeni seçim olarak sunulmaması, şehir değişince lokasyonun boşalması, gövde ve CSRF, sunucu alan hatası, çakışmada uyarı ve yenileme, sonradan pasif yapılan mevcut değerin korunması, arşivlenmişte düğme yok | Vitest | 105/105 geçti (tüm web testleri) |
 | **25. gün** Konum değiştirme (tarayıcı): başka şehir, o şehrin lokasyonu ve departmana taşıma; yalnızca seçilen şehrin lokasyonları sunulur; geçmişte "Şehir: … → …"; API'de yeni değerler. Başka şehrin lokasyonunu doğrudan gönderen istek `400` ve Türkçe alan mesajı, kayıt değişmez | Playwright (Chromium) | 24/24 geçti (tüm tarayıcı testleri) |
+| **40. gün** Tanımlar ve Zimmetler (Vitest): marka ve modellerin durumlarıyla listesi; pasif markada ve seçimsiz yeni model kapalı, seçilen markaya model ekleme; ad değiştirip pasifleştirme ve listedeki `rowVersion`'ın gönderilmesi; çakışmada uyarı, kapalı Kaydet, yeniden okunan liste; aynı ad ve pasif marka hataları alanın altında; boş ad gönderilmez; lokasyonların şehirleriyle listesi ve yeniden etkinleştirme; Zimmetler isteği `status=Assigned`, durum ve arşiv filtresi yok | Vitest | 9/9 geçti |
+| **40. gün** Tanımlar ve Zimmetler (tarayıcı): ekrandan marka ve o markaya model ekleme, markanın adını değiştirip pasifleştirme, model listesinde yeni ad, audit'te `Created` ve `Updated`, yeni demirbaş formunda pasif marka yok; pencere açıkken başkası şehri değiştirirse uyarı ve onun değeri yerinde; Zimmetler menüsünde yalnızca zimmetli demirbaş ve detaya geçiş; üç ekran 390 px telefonda taşmıyor | Playwright (Chromium) | 4/4 geçti |
 | **24. gün** Zimmet ver/iade et (tarayıcı, gerçek API + SQL Server, sahte AD): `Bim_Envanter` dışındaki `e2e.outsider` detay sayfasından aranıp seçilir ve zimmetlenir, API'de `Assigned`; iade alınır, API'de `Available`, zimmet geçmişinde tek dönem (iade eden `e2e.admin`); pasif hesap listelenmez; pencere açıkken başkası düzenlerse `409` uyarısı ve güncel kayıt | Playwright (Chromium) | 22/22 geçti (tüm tarayıcı testleri) |
 
 Mutasyon denemeleri (kod bilerek bozuldu, testlerin yakaladığı görüldü, sonra geri alındı):

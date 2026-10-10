@@ -19,6 +19,11 @@ public sealed class LookupAuthorizationTests
         { "POST", "/api/locations" },
         { "GET", "/api/departments" },
         { "POST", "/api/departments" },
+        { "PUT", "/api/brands/1" },
+        { "PUT", "/api/models/1" },
+        { "PUT", "/api/cities/1" },
+        { "PUT", "/api/locations/1" },
+        { "PUT", "/api/departments/1" },
     };
 
     [Theory]
