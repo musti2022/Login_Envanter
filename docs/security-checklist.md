@@ -11,7 +11,7 @@ Her kontrolün nasıl sağlandığı ve onu kanıtlayan test. **Durum** sütunu:
 
 | Kontrol | Nasıl | Kanıt | Durum |
 | --- | --- | --- | --- |
-| Varsayılan olarak her uç nokta kapalı | Fallback politikası `Administrator` rolü ister; yalnızca dört uç nokta anonimdir (health live/ready, CSRF token, giriş) | `EndpointAccessTests.Only_the_health_probes_csrf_token_and_sign_in_are_marked_anonymous` | Test edildi |
+| Varsayılan olarak her uç nokta kapalı | Fallback politikası `Administrator` rolü ister; yalnızca health live/ready, CSRF token, giriş ve React uygulamasının sayfası (`index.html`, veri içermez) anonimdir | `EndpointAccessTests.Only_the_health_probes_csrf_token_sign_in_and_the_app_page_are_marked_anonymous`, `WebAppHostingTests` | Test edildi |
 | Ziyaretçi hiçbir uç noktaya erişemez | Yönlendirme tablosundaki **her** uç nokta ve metot (hub dahil) anonim istekle `401` | `EndpointAccessTests.A_visitor_is_refused_everywhere_but_the_health_probes_and_sign_in` | Test edildi |
 | Rolü olmayan kullanıcı erişemez | Aynı tablo, `Administrator` rolü olmayan oturumla `403` | `EndpointAccessTests.A_signed_in_user_without_the_administrator_role_is_refused_everywhere_but_the_anonymous_endpoints` | Test edildi |
 | Yeni eklenen uç nokta unutulmaz | Testler uç nokta listesini elle değil `EndpointDataSource`'tan okur; liste boş ya da eksikse koruma testi kırılır | `EndpointAccessTests.The_routing_table_holds_the_api_and_the_hub`; bilinçli hata (`AllowAnonymous` eklenmiş gösterge paneli) üç testçe yakalandı | Test edildi |
@@ -50,7 +50,7 @@ Her kontrolün nasıl sağlandığı ve onu kanıtlayan test. **Durum** sütunu:
 | Kontrol | Nasıl | Kanıt | Durum |
 | --- | --- | --- | --- |
 | AD yalnızca LDAPS | Düz LDAP ayarı uygulamayı durdurur; sertifika zinciri, ad ve süre sıkı doğrulanır | `Plain_ldap_stops_the_application`, `LdapsCertificateValidatorTests`, `SambaLdapsTests` | Samba ile test edildi |
-| Doğrulamayı kapatan ayar yok | Test dışındaki dosyalarda `TrustServerCertificate=true`, `Encrypt=false`, `rejectUnauthorized: false`, `NODE_TLS_REJECT_UNAUTHORIZED` yok | `RepositorySecretsTests.Nothing_outside_the_tests_switches_off_certificate_validation` | Test edildi |
+| Doğrulamayı kapatan ayar yok | Test dışındaki dosyalarda (bu doküman dahil) SQL bağlantısında sunucu sertifikasına körü körüne güvenen ya da şifrelemeyi kapatan, Node veya Vite proxy'sinde sertifika doğrulamasını kapatan ayar yok; desenler testte | `RepositorySecretsTests.Nothing_outside_the_tests_switches_off_certificate_validation` | Test edildi |
 | HTTPS zorunlu | HTTP isteği HTTPS'e yönlenir; Development dışında HSTS (geliştirici makinesi HTTPS'e kilitlenmez) | `TransportSecurityTests` | Test edildi; IIS binding ortamda doğrulanacak |
 
 ## Girdi ve enjeksiyon

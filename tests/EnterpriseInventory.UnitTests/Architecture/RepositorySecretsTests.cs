@@ -5,8 +5,8 @@ namespace EnterpriseInventory.UnitTests.Architecture;
 
 /// <summary>
 /// What the repository must never hold: keys and certificates, passwords in configuration, deployment files or
-/// documents, and settings that switch off certificate validation. Reads the files Git tracks, so local secrets
-/// kept out of Git (user-secrets, .env) do not count.
+/// documents, and settings that switch off certificate validation. Reads the files Git tracks or would add (new files
+/// not yet committed included), so local secrets Git ignores (.env, user-secrets live outside the repository) do not count.
 /// </summary>
 public sealed partial class RepositorySecretsTests
 {
@@ -74,7 +74,7 @@ public sealed partial class RepositorySecretsTests
         }
 
         var root = directory?.FullName ?? throw new InvalidOperationException("The repository root was not found.");
-        using var git = Process.Start(new ProcessStartInfo("git", ["-C", root, "ls-files", "-z"])
+        using var git = Process.Start(new ProcessStartInfo("git", ["-C", root, "ls-files", "-z", "--cached", "--others", "--exclude-standard"])
         {
             RedirectStandardOutput = true,
             UseShellExecute = false,
