@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.VisualStudio.JavaScript.Sdk/1.0.6778455">
+  <!--
+    Lets Visual Studio show the React app in the solution and start it with the API
+    (EnterpriseInventory.slnLaunch). It is not how the app is built for release: deploy/iis/Publish-EnterpriseInventory.ps1
+    builds React itself and puts it in the API's wwwroot.
+  -->
+  <PropertyGroup>
+    <!-- Vite dev server on http://localhost:5173; /api and /hubs go to the API (vite.config.ts). -->
+    <StartupCommand>npm run dev</StartupCommand>
+    <!-- Building the solution does not build React (npm run build does) and does not reach the network for npm audit
+         (dependencies are checked with npm audit on purpose: docs/security-checklist.md). -->
+    <ShouldRunBuildScript>false</ShouldRunBuildScript>
+    <ShouldRunNpmAudit>false</ShouldRunNpmAudit>
+    <!-- The SDK's own step runs npm install, which may rewrite package-lock.json; the target below runs npm ci instead. -->
+    <ShouldRunNpmInstall>false</ShouldRunNpmInstall>
+    <BuildOutputFolder>$(MSBuildProjectDirectory)\dist</BuildOutputFolder>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Remove="dist\**;test-results\**;playwright-report\**" />
+  </ItemGroup>
+
+  <!-- Installs exactly the versions in package-lock.json the first time the project is built or started. -->
+  <Target Name="InstallNodeModules" BeforeTargets="CoreCompile;ComputeRunArguments" Condition="!Exists('$(MSBuildProjectDirectory)\node_modules')">
+    <Exec Command="node --version" ContinueOnError="true" StandardOutputImportance="low">
+      <Output TaskParameter="ExitCode" PropertyName="NodeVersionExitCode" />
+    </Exec>
+    <Error Condition="'$(NodeVersionExitCode)' != '0'" Text="Web arayüzü için Node.js 22 veya üstü gerekir: https://nodejs.org/" />
+    <Exec Command="npm ci" WorkingDirectory="$(MSBuildProjectDirectory)" />
+  </Target>
+</Project>

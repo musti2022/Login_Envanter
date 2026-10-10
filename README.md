@@ -51,13 +51,14 @@ Proje gereksinimleri ve 40 günlük plan: [`proje_talimatlari.md`](proje_talimat
 ## Klasör yapısı
 
 ```
-EnterpriseInventory.slnx
+EnterpriseInventory.slnx               Çözüm (Visual Studio 2026 / dotnet CLI)
+EnterpriseInventory.slnLaunch          Visual Studio'nun "API ve Web" başlatma profili
 src/
   EnterpriseInventory.Domain/          Entity'ler ve iş kuralları (bağımlılık yok)
   EnterpriseInventory.Application/     Kullanım senaryoları, doğrulama
   EnterpriseInventory.Infrastructure/  SQL Server, Active Directory adaptörleri
   EnterpriseInventory.Api/             ASP.NET Core Web API ve SignalR
-  EnterpriseInventory.Web/             React + Vite arayüzü
+  EnterpriseInventory.Web/             React + Vite arayüzü (Visual Studio için EnterpriseInventory.Web.esproj)
 tests/
   EnterpriseInventory.UnitTests/       Birim ve mimari testleri
   EnterpriseInventory.IntegrationTests/ API entegrasyon testleri
@@ -195,6 +196,29 @@ export NODE_EXTRA_CA_CERTS="$HOME/.aspnet/https/aspnet-dev-cert.pem"
 
 Proxy hedefi `localhost` dışında bir adres olacaksa sertifika adı doğrulaması için `vite.config.ts` içindeki
 `changeOrigin` ayarı gözden geçirilmelidir.
+
+### Visual Studio ile
+
+Gerekenler: Visual Studio 2026 (.NET 10 için), **ASP.NET ve web geliştirme** iş yükü (React projesi bununla açılır),
+Node.js 22 veya üstü. Visual Studio ile açılması bu depoda denenmedi; çözüm, React projesinin derlenmesi ve
+`npm run dev` ile başlatılması komut satırında denendi.
+
+1. `EnterpriseInventory.slnx` dosyasını açın. Çözüm Gezgini'nde React arayüzü `EnterpriseInventory.Web` olarak görünür.
+2. `EnterpriseInventory.Api` → **Kullanıcı gizli dizilerini yönet** (Manage User Secrets): `ConnectionStrings:DefaultConnection`
+   ve sahte dizin kullanıcıları ([ayrıntı](docs/active-directory.md#geliştirme-ortamı-sahte-dizin)). Veritabanını
+   [EF Core komutlarıyla](#veritabanı-ef-core) hazırlayın.
+3. Node.js'in API'nin geliştirme sertifikasına güvenmesi için bir kez (Windows, sonra Visual Studio'yu yeniden açın):
+   ```powershell
+   dotnet dev-certs https --trust
+   dotnet dev-certs https --export-path "$HOME\.aspnet\https\aspnet-dev-cert.pem" --format Pem
+   setx NODE_EXTRA_CA_CERTS "$HOME\.aspnet\https\aspnet-dev-cert.pem"
+   ```
+4. Araç çubuğundaki başlatma listesinden **API ve Web** profilini seçip başlatın. API `https` profiliyle
+   (`https://localhost:7261`), arayüz `npm run dev` ile (`http://localhost:5173`) açılır ve tarayıcı giriş sayfasına gider.
+   İlk başlatmada `node_modules` yoksa `npm ci` kendiliğinden çalışır.
+
+Çözümü derlemek React'i derlemez ve `npm audit` çalıştırmaz (`EnterpriseInventory.Web.esproj`); yayın paketini
+[`Publish-EnterpriseInventory.ps1`](deploy/iis/Publish-EnterpriseInventory.ps1) hazırlar.
 
 ## Konfigürasyon ve gizli değerler
 

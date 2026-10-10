@@ -1,0 +1,15 @@
+[
+  {
+    "Name": "API ve Web",
+    "Projects": [
+      {
+        "Path": "src\\EnterpriseInventory.Api\\EnterpriseInventory.Api.csproj",
+        "Action": "Start"
+      },
+      {
+        "Path": "src\\EnterpriseInventory.Web\\EnterpriseInventory.Web.esproj",
+        "Action": "Start"
+      }
+    ]
+  }
+]
