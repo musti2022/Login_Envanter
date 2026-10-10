@@ -150,7 +150,7 @@ public sealed class DashboardStatisticsTests(SqlServerDatabaseFixture fixture) :
     }
 
     private static List<(string?, int)> Distribution(JsonElement statistics, string property) =>
-        statistics.GetProperty(property).EnumerateArray()
+        statistics.GetProperty(property).GetProperty("items").EnumerateArray()
             .Select(d => (d.GetProperty("name").GetString(), d.GetProperty("count").GetInt32()))
             .ToList();
 }

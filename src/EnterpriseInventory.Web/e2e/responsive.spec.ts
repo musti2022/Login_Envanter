@@ -54,10 +54,16 @@ test('on a phone every screen fits the width and the main tasks work', async ({ 
   await expect(page).toHaveURL(/status=Faulty/)
   await expect(page.getByRole('button', { name: 'Filtreler, 1 filtre açık' })).toBeVisible()
   await expectToFitTheWidth(page)
-  // The page buttons are not cut off at the card's edge.
+  // The page buttons are not cut off at the card's edge. (Measured as boxes: the pagination box clips its content,
+  // and a fraction of a pixel lost to rounding there made a "fully in view" check fail now and then.)
   const lastPage = page.getByRole('button', { name: 'Son sayfa' })
   await lastPage.scrollIntoViewIfNeeded()
-  await expect(lastPage).toBeInViewport({ ratio: 1 })
+  await expect(lastPage).toBeInViewport({ ratio: 0.95 })
+  const button = (await lastPage.boundingBox())!
+  const card = (await page.locator('.MuiCard-root', { has: lastPage }).boundingBox())!
+  expect(button.x).toBeGreaterThanOrEqual(card.x)
+  expect(button.x + button.width).toBeLessThanOrEqual(card.x + card.width + 0.5)
+  expect(button.y + button.height).toBeLessThanOrEqual(card.y + card.height + 0.5)
   await screenshot(page, testInfo, 'envanter')
 
   await page.getByRole('link', { name: `${asset.assetCode} detayı` }).click()

@@ -13,6 +13,9 @@ sahte AD). Sunucu tarafı: [`assets-api.md`](assets-api.md), [`lookups-api.md`](
 - Şehir ve departman dağılımı büyükten küçüğe; son 10 demirbaş işlemi (kim, ne zaman, hangi demirbaş). İşlem satırı
   demirbaşın detayına gider.
 - Her kart envanteri o duruma göre süzülmüş açar (ör. Zimmetli → `/envanter?status=Assigned`).
+- 33. gün: şehir/departman satırlarında zimmetli sayısı, tür ve marka dağılımı, aylık zimmet hareketleri grafiği;
+  listeler en büyük 8 satır ve "Diğer N şehir" ile sınırlı. Ayrıntılar ve tutarlılık testleri:
+  [`reports.md`](reports.md).
 
 ## Envanter listesi (17–18. gün)
 

@@ -6,9 +6,15 @@ import { PageHeader } from '../components/PageHeader'
 import { EmptyState } from '../components/states/EmptyState'
 import { ErrorState } from '../components/states/ErrorState'
 import { LoadingState } from '../components/states/LoadingState'
-import { DistributionList } from '../dashboard/DistributionList'
-import { dashboardQueryKey, fetchDashboardStatistics, type DashboardStatistics } from '../dashboard/dashboardApi'
-import { actionLabel, formatDateTime, formatNumber } from '../inventory/labels'
+import { DistributionList, type DistributionRow } from '../dashboard/DistributionList'
+import { MonthlyMovementsChart } from '../dashboard/MonthlyMovementsChart'
+import {
+  dashboardQueryKey,
+  fetchDashboardStatistics,
+  type DashboardStatistics,
+  type Distribution,
+} from '../dashboard/dashboardApi'
+import { actionLabel, formatDateTime, formatNumber, typeLabels } from '../inventory/labels'
 
 interface Kpi {
   label: string
@@ -74,8 +80,11 @@ function DashboardContent({ statistics }: { statistics: DashboardStatistics }) {
       <Grid container spacing={2}>
         <Grid size={{ xs: 12, md: 6, lg: 4 }}>
           <Section title="Şehirlere göre dağılım">
-            {statistics.byCity.length > 0 ? (
-              <DistributionList label="Şehirlere göre demirbaş sayısı" items={statistics.byCity} />
+            {statistics.byCity.items.length > 0 ? (
+              <DistributionList
+                label="Şehirlere göre demirbaş sayısı"
+                rows={distributionRows(statistics.byCity, { other: 'şehir', filter: 'cityId', split: true })}
+              />
             ) : (
               <NoAssets />
             )}
@@ -83,8 +92,11 @@ function DashboardContent({ statistics }: { statistics: DashboardStatistics }) {
         </Grid>
         <Grid size={{ xs: 12, md: 6, lg: 4 }}>
           <Section title="Departmanlara göre dağılım">
-            {statistics.byDepartment.length > 0 ? (
-              <DistributionList label="Departmanlara göre demirbaş sayısı" items={statistics.byDepartment} />
+            {statistics.byDepartment.items.length > 0 ? (
+              <DistributionList
+                label="Departmanlara göre demirbaş sayısı"
+                rows={distributionRows(statistics.byDepartment, { other: 'departman', filter: 'departmentId', split: true })}
+              />
             ) : (
               <NoAssets />
             )}
@@ -120,8 +132,74 @@ function DashboardContent({ statistics }: { statistics: DashboardStatistics }) {
           </Section>
         </Grid>
       </Grid>
+
+      <Grid container spacing={2} sx={{ mt: 0 }}>
+        <Grid size={{ xs: 12, lg: 6 }}>
+          <Section title="Aylık zimmet hareketleri">
+            <MonthlyMovementsChart months={statistics.monthlyMovements} />
+          </Section>
+        </Grid>
+        <Grid size={{ xs: 12, md: 6, lg: 3 }}>
+          <Section title="Türlere göre dağılım">
+            {statistics.byType.length > 0 ? (
+              <DistributionList
+                label="Türlere göre demirbaş sayısı"
+                rows={statistics.byType.map((t) => ({
+                  key: t.assetType,
+                  name: typeLabels[t.assetType] ?? t.assetType,
+                  count: t.count,
+                  to: `/envanter?assetType=${t.assetType}`,
+                }))}
+              />
+            ) : (
+              <NoAssets />
+            )}
+          </Section>
+        </Grid>
+        <Grid size={{ xs: 12, md: 6, lg: 3 }}>
+          <Section title="Markalara göre dağılım">
+            {statistics.byBrand.items.length > 0 ? (
+              <DistributionList
+                label="Markalara göre demirbaş sayısı"
+                rows={distributionRows(statistics.byBrand, { other: 'marka', filter: 'brandId', split: false })}
+              />
+            ) : (
+              <NoAssets />
+            )}
+          </Section>
+        </Grid>
+      </Grid>
     </>
   )
+}
+
+interface RowOptions {
+  /** What the rest are, e.g. "şehir" for "Diğer 12 şehir". */
+  other: string
+  /** The inventory filter of a row. */
+  filter: 'cityId' | 'departmentId' | 'brandId'
+  /** Whether the bars show the assigned part. */
+  split: boolean
+}
+
+/** One row per named city, department or brand, linked to the filtered inventory, and one for the rest. */
+function distributionRows(distribution: Distribution, { other, filter, split }: RowOptions): DistributionRow[] {
+  const rows: DistributionRow[] = distribution.items.map((item) => ({
+    key: item.id,
+    name: item.name,
+    count: item.count,
+    ...(split && { assignedCount: item.assignedCount }),
+    to: `/envanter?${filter}=${item.id}`,
+  }))
+  if (distribution.otherGroupCount > 0) {
+    rows.push({
+      key: 'other',
+      name: `Diğer ${formatNumber(distribution.otherGroupCount)} ${other}`,
+      count: distribution.otherCount,
+      ...(split && { assignedCount: distribution.otherAssignedCount }),
+    })
+  }
+  return rows
 }
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
