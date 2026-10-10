@@ -20,6 +20,7 @@ Kod: `src/EnterpriseInventory.Api/Assets`, `src/EnterpriseInventory.Application/
 | Adres | İşlem | Başarılı yanıt |
 | --- | --- | --- |
 | `GET /api/assets` | Liste: arama, filtre, sıralama, sayfalama | `200` sayfa |
+| `GET /api/assets/export` | Listenin aynı filtre ve sıralamayla bütün sayfaları, Excel dosyası | `200` `.xlsx`, bkz. [`export.md`](export.md) |
 | `GET /api/assets/{id}` | Detay (arşivlenmiş dahil) | `200` |
 | `POST /api/assets` | Ekleme | `201`, `Location: /api/assets/{id}` ve detay |
 | `PUT /api/assets/{id}` | Güncelleme (RowVersion ile) | `200` güncel detay |

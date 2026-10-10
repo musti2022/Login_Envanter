@@ -21,4 +21,9 @@
     <ProjectReference Include="..\..\src\EnterpriseInventory.Api\EnterpriseInventory.Api.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Reads exported .xlsx files back; written once, for both test projects. -->
+    <Compile Include="..\EnterpriseInventory.UnitTests\Exports\SpreadsheetFile.cs" Link="Exports\SpreadsheetFile.cs" />
+  </ItemGroup>
+
 </Project>

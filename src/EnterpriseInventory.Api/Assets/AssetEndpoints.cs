@@ -1,6 +1,8 @@
+using System.Globalization;
 using EnterpriseInventory.Api.Employees;
 using EnterpriseInventory.Api.Http;
 using EnterpriseInventory.Application.Assets;
+using EnterpriseInventory.Application.Exports;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 
@@ -21,6 +23,9 @@ internal static class AssetEndpoints
     {
         var assets = endpoints.MapGroup(Path);
         assets.MapGet(string.Empty, ListAsync);
+
+        // "Excel'e aktar": the list with the same filters and order, every page, as an .xlsx file.
+        assets.MapGet("/export", ExportAsync);
         assets.MapGet("/{id:int}", GetAsync);
         assets.MapPost(string.Empty, CreateAsync)
             .Accepts<SaveAssetRequest>("application/json")
@@ -54,6 +59,32 @@ internal static class AssetEndpoints
     {
         var result = await assets.ListAsync(request, cancellationToken);
         return result.Page is { } page ? TypedResults.Ok(page) : ApiResults.ValidationProblem(result.Errors!);
+    }
+
+    private static async Task<IResult> ExportAsync(
+        [AsParameters] AssetListRequest request, AssetExportService exports, ISpreadsheetWriter writer, CancellationToken cancellationToken)
+    {
+        var result = await exports.ExportAsync(request, cancellationToken);
+        switch (result.Outcome)
+        {
+            case AssetExportOutcome.Invalid:
+                return ApiResults.ValidationProblem(result.Errors!);
+            case AssetExportOutcome.TooManyRows:
+                var turkish = CultureInfo.GetCultureInfo("tr-TR");
+                return ApiResults.Problem(
+                    StatusCodes.Status400BadRequest,
+                    "Aktarılacak demirbaş sayısı sınırı aşıyor.",
+                    string.Create(
+                        turkish,
+                        $"Filtrelerle eşleşen {result.MatchCount:N0} demirbaş var; bir dosyaya en fazla {result.MaxRows:N0} demirbaş aktarılabilir. Filtreleri daraltıp tekrar deneyin."),
+                    "export_too_large");
+            default:
+                using (var file = new MemoryStream())
+                {
+                    writer.Write(result.Spreadsheet!, file);
+                    return TypedResults.File(file.ToArray(), writer.ContentType, result.FileName + writer.FileExtension);
+                }
+        }
     }
 
     private static async Task<Results<Ok<AssetDetails>, ProblemHttpResult>> GetAsync(int id, AssetService assets, CancellationToken cancellationToken) =>

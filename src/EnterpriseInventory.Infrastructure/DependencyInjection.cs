@@ -4,11 +4,13 @@ using EnterpriseInventory.Application.Auditing;
 using EnterpriseInventory.Application.Authentication;
 using EnterpriseInventory.Application.Dashboard;
 using EnterpriseInventory.Application.Employees;
+using EnterpriseInventory.Application.Exports;
 using EnterpriseInventory.Application.Lookups;
 using EnterpriseInventory.Infrastructure.ActiveDirectory;
 using EnterpriseInventory.Infrastructure.Assets;
 using EnterpriseInventory.Infrastructure.Auditing;
 using EnterpriseInventory.Infrastructure.Dashboard;
+using EnterpriseInventory.Infrastructure.Exports;
 using EnterpriseInventory.Infrastructure.Identity;
 using EnterpriseInventory.Infrastructure.Lookups;
 using EnterpriseInventory.Infrastructure.Persistence;
@@ -42,6 +44,7 @@ public static class DependencyInjection
         services.AddScoped<IDashboardStore, DashboardStore>();
         services.AddScoped<ILookupStore, LookupStore>();
         services.AddScoped<IAuditLogStore, AuditLogStore>();
+        services.AddSingleton<ISpreadsheetWriter, OpenXmlSpreadsheetWriter>();
         services.AddDbContext<ApplicationDbContext>((serviceProvider, options) =>
         {
             var connectionString = configuration.GetConnectionString(ConnectionStringName);

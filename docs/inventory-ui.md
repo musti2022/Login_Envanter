@@ -19,6 +19,8 @@ sahte AD). Sunucu tarafı: [`assets-api.md`](assets-api.md), [`lookups-api.md`](
 - Tablo: Demirbaş Kodu, Kullanıcı Adı, Bilgisayar Adı, Marka, Model, Seri No, Zimmet Tanımı, Lokasyon/Şehir,
   Lokasyon/Departman, Durum, İşlemler (Detay, Düzenle). Tür ve Son Değişiklik "Sütunlar" menüsünden açılır; en az bir
   sütun açık kalır. Sütun tercihi yalnızca bellekte tutulur (tarayıcı deposu kullanılmaz).
+- "Excel'e aktar" (32. gün) ekrandaki listeyi aynı arama, filtre ve sıralamayla, bütün sayfalarıyla indirir; bkz.
+  [`export.md`](export.md).
 - Sıralama, sayfalama (10/25/50/100), arama ve filtrelerin hepsi sunucu tarafındadır ve sayfa adresinde durur:
   adres = API sorgusu. Kopyalanan bağlantı aynı listeyi açar; varsayılanlar adrese yazılmaz; elle bozulmuş değerler
   varsayılana döner.

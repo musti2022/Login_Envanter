@@ -1,4 +1,4 @@
-import { ApiError, apiFetch, inBackground, onUnauthorized, setCsrfToken } from './http'
+import { ApiError, apiFetch, fileNameOf, inBackground, onUnauthorized, setCsrfToken } from './http'
 import { json, mockApi } from '../test/mockApi'
 
 describe('apiFetch', () => {
@@ -101,5 +101,19 @@ describe('apiFetch', () => {
     const marked = requests.map((r) => `${r.method} ${r.path} ${r.headers['x-background-request'] ?? '-'}`)
     // A write is always the user's own doing; the read made after inBackground returned is too.
     expect(marked).toEqual(['GET /api/things 1', 'GET /api/auth/csrf -', 'GET /api/things -', 'POST /api/things -'])
+  })
+})
+
+describe('fileNameOf', () => {
+  it.each([
+    ["attachment; filename=envanter-2026-10-10.xlsx; filename*=UTF-8''envanter-2026-10-10.xlsx", 'envanter-2026-10-10.xlsx'],
+    ["attachment; filename=rapor.xlsx; filename*=UTF-8''%C5%9Fehir-raporu.xlsx", 'şehir-raporu.xlsx'],
+    ['attachment; filename="envanter arsiv.xlsx"', 'envanter arsiv.xlsx'],
+    ['attachment; filename=envanter.xlsx', 'envanter.xlsx'],
+    ["attachment; filename=yedek.xlsx; filename*=UTF-8''%E0%A4%A", 'yedek.xlsx'],
+    ['attachment', null],
+    [null, null],
+  ])('reads %s as %s', (header, name) => {
+    expect(fileNameOf(header)).toBe(name)
   })
 })

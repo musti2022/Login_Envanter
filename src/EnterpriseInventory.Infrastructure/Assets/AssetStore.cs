@@ -31,14 +31,53 @@ internal sealed partial class AssetStore(
     {
         ArgumentNullException.ThrowIfNull(criteria);
 
-        // Normal lists rely on the soft-delete filter; only the archive list turns it off, to show archived assets.
-        var source = criteria.Archived ? db.Assets.IncludingArchived().Where(a => a.IsDeleted) : db.Assets;
-        var assets = Filter(source.AsNoTracking(), criteria);
+        var assets = Matching(criteria);
         var totalCount = await assets.CountAsync(cancellationToken).ConfigureAwait(false);
 
-        var rows = await Sort(assets, criteria)
-            .Skip((criteria.Page - 1) * criteria.PageSize)
-            .Take(criteria.PageSize)
+        var items = await ReadListItemsAsync(
+                Sort(assets, criteria).Skip((criteria.Page - 1) * criteria.PageSize).Take(criteria.PageSize), cancellationToken)
+            .ConfigureAwait(false);
+        return new PagedResult<AssetListItem>(items, criteria.Page, criteria.PageSize, totalCount);
+    }
+
+    public async Task<AssetExportRows> ExportAsync(AssetListCriteria criteria, int maxRows, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(criteria);
+
+        var assets = Matching(criteria);
+        var matchCount = await assets.CountAsync(cancellationToken).ConfigureAwait(false);
+        if (matchCount > maxRows)
+        {
+            return new AssetExportRows(matchCount, []);
+        }
+
+        // One more than allowed: assets added since the count are not cut off silently.
+        var items = await ReadListItemsAsync(Sort(assets, criteria).Take(maxRows + 1), cancellationToken).ConfigureAwait(false);
+        return items.Count > maxRows ? new AssetExportRows(items.Count, []) : new AssetExportRows(items.Count, items);
+    }
+
+    public async Task<AssetFilterNames> FilterNamesAsync(AssetListCriteria criteria, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(criteria);
+
+        return new AssetFilterNames(
+            criteria.BrandId is { } brandId ? await NameAsync(db.Brands.Where(b => b.Id == brandId).Select(b => b.Name)).ConfigureAwait(false) : null,
+            criteria.ModelId is { } modelId ? await NameAsync(db.AssetModels.Where(m => m.Id == modelId).Select(m => m.Name)).ConfigureAwait(false) : null,
+            criteria.CityId is { } cityId ? await NameAsync(db.Cities.Where(c => c.Id == cityId).Select(c => c.Name)).ConfigureAwait(false) : null,
+            criteria.DepartmentId is { } departmentId
+                ? await NameAsync(db.Departments.Where(d => d.Id == departmentId).Select(d => d.Name)).ConfigureAwait(false)
+                : null,
+            criteria.LocationId is { } locationId
+                ? await NameAsync(db.Locations.Where(l => l.Id == locationId).Select(l => l.Name)).ConfigureAwait(false)
+                : null);
+
+        Task<string?> NameAsync(IQueryable<string> names) => names.Select(n => (string?)n).FirstOrDefaultAsync(cancellationToken);
+    }
+
+    /// <summary>The inventory table's columns, flattened to names, for the assets of <paramref name="assets"/>.</summary>
+    private static async Task<List<AssetListItem>> ReadListItemsAsync(IQueryable<Asset> assets, CancellationToken cancellationToken)
+    {
+        var rows = await assets
             .Select(a => new
             {
                 a.Id,
@@ -63,7 +102,7 @@ internal sealed partial class AssetStore(
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
-        var items = rows.ConvertAll(r => new AssetListItem(
+        return rows.ConvertAll(r => new AssetListItem(
             r.Id,
             r.AssetCode,
             r.ComputerName,
@@ -81,7 +120,14 @@ internal sealed partial class AssetStore(
             r.IsDeleted,
             r.CreatedAt,
             r.UpdatedAt));
-        return new PagedResult<AssetListItem>(items, criteria.Page, criteria.PageSize, totalCount);
+    }
+
+    /// <summary>The assets a list or export with these criteria holds, unsorted.</summary>
+    private IQueryable<Asset> Matching(AssetListCriteria criteria)
+    {
+        // Normal lists rely on the soft-delete filter; only the archive list turns it off, to show archived assets.
+        var source = criteria.Archived ? db.Assets.IncludingArchived().Where(a => a.IsDeleted) : db.Assets;
+        return Filter(source.AsNoTracking(), criteria);
     }
 
     private static IQueryable<Asset> Filter(IQueryable<Asset> assets, AssetListCriteria criteria)

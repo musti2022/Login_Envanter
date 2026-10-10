@@ -12,6 +12,7 @@ using EnterpriseInventory.Api.Realtime;
 using EnterpriseInventory.Api.Security;
 using EnterpriseInventory.Application;
 using EnterpriseInventory.Application.Abstractions;
+using EnterpriseInventory.Application.Exports;
 using EnterpriseInventory.Infrastructure;
 using EnterpriseInventory.Infrastructure.Persistence.Seed;
 using Serilog;
@@ -51,6 +52,10 @@ try
     builder.Services.AddRealtime();
     builder.Services.AddApplication();
     builder.Services.AddInfrastructure(builder.Configuration);
+    builder.Services.AddOptions<ReportingOptions>()
+        .BindConfiguration(ReportingOptions.SectionName)
+        .ValidateDataAnnotations()
+        .ValidateOnStart();
 
     // No CORS: the React app, /api and /hubs are served from the same origin, so cross-origin calls are refused.
     var app = builder.Build();

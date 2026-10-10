@@ -11,6 +11,7 @@ import { AssetFilters } from '../inventory/AssetFilters'
 import { AssetTable } from '../inventory/AssetTable'
 import { assetsQueryKey, fetchAssets, toQueryString, type AssetListParams, type SortField } from '../inventory/assetsApi'
 import { ColumnMenu } from '../inventory/ColumnMenu'
+import { ExportButton } from '../inventory/ExportButton'
 import { activeFilterCount, clearedFilters, parseListParams } from '../inventory/listParams'
 
 export function InventoryPage() {
@@ -44,6 +45,7 @@ export function InventoryPage() {
         actions={
           <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
             <ColumnMenu hidden={hiddenColumns} onChange={setHiddenColumns} />
+            <ExportButton params={params} disabled={assets.data?.totalCount === 0} />
             <Button variant="contained" startIcon={<AddIcon />} component={RouterLink} to="/envanter/yeni">
               Yeni Demirbaş
             </Button>

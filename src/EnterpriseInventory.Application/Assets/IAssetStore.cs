@@ -9,6 +9,15 @@ public interface IAssetStore
     /// </summary>
     Task<PagedResult<AssetListItem>> ListAsync(AssetListCriteria criteria, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Every asset that matches the criteria, in the order <see cref="ListAsync"/> pages them (paging is ignored); when
+    /// more than <paramref name="maxRows"/> match, only how many (no rows are read).
+    /// </summary>
+    Task<AssetExportRows> ExportAsync(AssetListCriteria criteria, int maxRows, CancellationToken cancellationToken);
+
+    /// <summary>The names of the brand, model, city, department and location the criteria filter on.</summary>
+    Task<AssetFilterNames> FilterNamesAsync(AssetListCriteria criteria, CancellationToken cancellationToken);
+
     /// <summary>The asset, archived or not, or <c>null</c> when there is none with that ID.</summary>
     Task<AssetDetails?> FindAsync(int id, CancellationToken cancellationToken);
 

@@ -1,4 +1,4 @@
-import { ApiError, apiFetch } from '../api/http'
+import { ApiError, apiDownload, apiFetch } from '../api/http'
 import type { AssetStatus, AssetType } from './labels'
 
 export interface PagedResult<T> {
@@ -109,6 +109,15 @@ export const assetsQueryKey = ['assets'] as const
 export function fetchAssets(params: AssetListParams, signal?: AbortSignal) {
   const query = toQueryString(params)
   return apiFetch<PagedResult<AssetListItem>>(`/api/assets${query ? `?${query}` : ''}`, { signal })
+}
+
+/**
+ * "Excel'e aktar": the list with these filters and this order, every page of it, as an .xlsx file. The page and
+ * page size of the screen are left out.
+ */
+export function exportAssets(params: AssetListParams, signal?: AbortSignal) {
+  const query = toQueryString({ ...params, page: defaultListParams.page, pageSize: defaultListParams.pageSize })
+  return apiDownload(`/api/assets/export${query ? `?${query}` : ''}`, 'envanter.xlsx', signal)
 }
 
 export interface NamedReference {

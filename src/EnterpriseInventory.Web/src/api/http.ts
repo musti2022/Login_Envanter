@@ -128,6 +128,49 @@ export async function apiFetch<T>(path: string, options: ApiRequestOptions = {})
   return (await response.json()) as T
 }
 
+/** A file the API sent as an attachment. */
+export interface DownloadedFile {
+  blob: Blob
+  fileName: string
+}
+
+/**
+ * GETs a file (an Excel export). Errors arrive as ProblemDetails and are thrown as ApiError, like apiFetch's; the
+ * file name is the one the API gives in Content-Disposition.
+ */
+export async function apiDownload(path: string, fallbackName: string, signal?: AbortSignal): Promise<DownloadedFile> {
+  const response = await fetch(path, {
+    headers: { Accept: '*/*' },
+    credentials: 'same-origin',
+    signal,
+  })
+
+  if (response.status === 401) {
+    reportUnauthorized()
+  }
+
+  if (!response.ok) {
+    throw await toApiError(response)
+  }
+
+  return { blob: await response.blob(), fileName: fileNameOf(response.headers.get('Content-Disposition')) ?? fallbackName }
+}
+
+/** The file name of a Content-Disposition header: the UTF-8 form (filename*) when given, else the plain one. */
+export function fileNameOf(header: string | null): string | null {
+  if (!header) return null
+  const encoded = /filename\*\s*=\s*UTF-8''([^;]+)/i.exec(header)
+  if (encoded) {
+    try {
+      return decodeURIComponent(encoded[1].trim())
+    } catch {
+      // Falls back to the plain name below.
+    }
+  }
+  const plain = /filename\s*=\s*("([^"]*)"|[^;]+)/i.exec(header)
+  return plain ? (plain[2] ?? plain[1]).trim() : null
+}
+
 function send(path: string, method: string, options: ApiRequestOptions, token?: string) {
   const headers: Record<string, string> = { Accept: 'application/json' }
   if (options.body !== undefined) {

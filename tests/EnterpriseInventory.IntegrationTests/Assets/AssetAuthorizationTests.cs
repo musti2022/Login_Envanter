@@ -9,6 +9,7 @@ public sealed class AssetAuthorizationTests
     public static TheoryData<string, string> Endpoints => new()
     {
         { "GET", "/api/assets" },
+        { "GET", "/api/assets/export" },
         { "GET", "/api/assets/1" },
         { "POST", "/api/assets" },
         { "PUT", "/api/assets/1" },

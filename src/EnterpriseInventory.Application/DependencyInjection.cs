@@ -16,6 +16,7 @@ public static class DependencyInjection
         services.AddValidatorsFromAssembly(typeof(DependencyInjection).Assembly, includeInternalTypes: true);
         services.AddScoped<SignInHandler>();
         services.AddScoped<AssetService>();
+        services.AddScoped<AssetExportService>();
         services.AddScoped<AssetChangePublisher>();
         services.TryAddSingleton<IAssetChangeNotifier, NoAssetChangeNotifier>();
         services.AddScoped<AssetAssignmentService>();
