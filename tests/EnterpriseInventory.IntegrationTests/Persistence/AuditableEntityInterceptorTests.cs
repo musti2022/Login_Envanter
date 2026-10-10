@@ -1,0 +1,45 @@
+using EnterpriseInventory.Domain.Organization;
+using EnterpriseInventory.Domain.Users;
+using EnterpriseInventory.Infrastructure.Persistence;
+using EnterpriseInventory.Infrastructure.Persistence.Interceptors;
+using Microsoft.EntityFrameworkCore;
+
+namespace EnterpriseInventory.IntegrationTests.Persistence;
+
+public class AuditableEntityInterceptorTests
+{
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task Saving_without_a_signed_in_user_is_refused_before_the_database_is_reached(string? userName)
+    {
+        // The interceptor runs before EF Core opens a connection, so no SQL Server is needed here.
+        await using var context = OfflineContext(userName);
+        context.Cities.Add(City.Create("Ankara"));
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
+
+        Assert.Contains("signed-in user", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Records_without_audit_fields_also_need_a_signed_in_user()
+    {
+        await using var context = OfflineContext(userName: null);
+        context.AdminUsers.Add(AdminUser.Create(Guid.NewGuid(), "ayse.yilmaz", "Ayşe Yılmaz", DateTimeOffset.UtcNow));
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
+
+        Assert.Contains("signed-in user", exception.Message, StringComparison.Ordinal);
+    }
+
+    private static ApplicationDbContext OfflineContext(string? userName)
+    {
+        var options = new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseSqlServer("Server=unused;Database=unused;Connect Timeout=1")
+            .AddInterceptors(new AuditableEntityInterceptor(new TestCurrentUser(userName), TimeProvider.System))
+            .Options;
+        return new ApplicationDbContext(options);
+    }
+}

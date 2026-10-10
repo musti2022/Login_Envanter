@@ -1,0 +1,182 @@
+using System.Globalization;
+using EnterpriseInventory.Api.Employees;
+using EnterpriseInventory.Api.Http;
+using EnterpriseInventory.Application.Assets;
+using EnterpriseInventory.Application.Exports;
+using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.AspNetCore.Mvc;
+
+namespace EnterpriseInventory.Api.Assets;
+
+/// <summary>
+/// <c>/api/assets</c>. Every endpoint needs a signed-in Administrator (the fallback policy); state-changing ones
+/// also need the CSRF token (see CsrfProtectionMiddleware).
+/// </summary>
+internal static class AssetEndpoints
+{
+    public const string Path = "/api/assets";
+
+    /// <summary>Far more than an asset's fields can fill, small enough that nobody can post large bodies.</summary>
+    private const long MaxBodyBytes = 16 * 1024;
+
+    public static IEndpointRouteBuilder MapAssetEndpoints(this IEndpointRouteBuilder endpoints)
+    {
+        var assets = endpoints.MapGroup(Path);
+        assets.MapGet(string.Empty, ListAsync);
+
+        // "Excel'e aktar": the list with the same filters and order, every page, as an .xlsx file.
+        assets.MapGet("/export", ExportAsync);
+        assets.MapGet("/{id:int}", GetAsync);
+        assets.MapPost(string.Empty, CreateAsync)
+            .Accepts<SaveAssetRequest>("application/json")
+            .WithMetadata(new RequestSizeLimitAttribute(MaxBodyBytes));
+        assets.MapPut("/{id:int}", UpdateAsync)
+            .Accepts<UpdateAssetRequest>("application/json")
+            .WithMetadata(new RequestSizeLimitAttribute(MaxBodyBytes));
+
+        // Moves the asset (city, department, location) without a full edit; recorded as a location change.
+        assets.MapPut("/{id:int}/location", ChangeLocationAsync)
+            .Accepts<ChangeAssetLocationRequest>("application/json")
+            .WithMetadata(new RequestSizeLimitAttribute(MaxBodyBytes));
+
+        // Archives: the asset is soft-deleted and keeps its history (see IAssetStore.ArchiveAsync).
+        assets.MapDelete("/{id:int}", ArchiveAsync);
+        assets.MapGet("/{id:int}/history", HistoryAsync);
+
+        // Assignment periods (zimmet geçmişi), giving the asset to an employee, and taking it back.
+        assets.MapGet("/{id:int}/assignments", AssignmentsAsync);
+        assets.MapPost("/{id:int}/assignments", AssignAsync)
+            .Accepts<AssignAssetRequest>("application/json")
+            .WithMetadata(new RequestSizeLimitAttribute(MaxBodyBytes));
+        assets.MapPost("/{id:int}/returns", ReturnAsync)
+            .Accepts<ReturnAssetRequest>("application/json")
+            .WithMetadata(new RequestSizeLimitAttribute(MaxBodyBytes));
+        return endpoints;
+    }
+
+    private static async Task<Results<Ok<PagedResult<AssetListItem>>, ValidationProblem>> ListAsync(
+        [AsParameters] AssetListRequest request, AssetService assets, CancellationToken cancellationToken)
+    {
+        var result = await assets.ListAsync(request, cancellationToken);
+        return result.Page is { } page ? TypedResults.Ok(page) : ApiResults.ValidationProblem(result.Errors!);
+    }
+
+    private static async Task<IResult> ExportAsync(
+        [AsParameters] AssetListRequest request, AssetExportService exports, ISpreadsheetWriter writer, CancellationToken cancellationToken)
+    {
+        var result = await exports.ExportAsync(request, cancellationToken);
+        switch (result.Outcome)
+        {
+            case AssetExportOutcome.Invalid:
+                return ApiResults.ValidationProblem(result.Errors!);
+            case AssetExportOutcome.TooManyRows:
+                var turkish = CultureInfo.GetCultureInfo("tr-TR");
+                return ApiResults.Problem(
+                    StatusCodes.Status400BadRequest,
+                    "Aktarılacak demirbaş sayısı sınırı aşıyor.",
+                    string.Create(
+                        turkish,
+                        $"Filtrelerle eşleşen {result.MatchCount:N0} demirbaş var; bir dosyaya en fazla {result.MaxRows:N0} demirbaş aktarılabilir. Filtreleri daraltıp tekrar deneyin."),
+                    "export_too_large");
+            default:
+                using (var file = new MemoryStream())
+                {
+                    writer.Write(result.Spreadsheet!, file);
+                    return TypedResults.File(file.ToArray(), writer.ContentType, result.FileName + writer.FileExtension);
+                }
+        }
+    }
+
+    private static async Task<Results<Ok<AssetDetails>, ProblemHttpResult>> GetAsync(int id, AssetService assets, CancellationToken cancellationToken) =>
+        await assets.FindAsync(id, cancellationToken) is { } asset ? TypedResults.Ok(asset) : NotFound();
+
+    private static async Task<IResult> CreateAsync(SaveAssetRequest body, AssetService assets, CancellationToken cancellationToken)
+    {
+        var result = await assets.CreateAsync(body, cancellationToken);
+        return result is { Outcome: AssetWriteOutcome.Succeeded, Asset: { } asset }
+            ? TypedResults.Created($"{Path}/{asset.Id}", asset)
+            : Failure(result);
+    }
+
+    private static async Task<IResult> UpdateAsync(int id, UpdateAssetRequest body, AssetService assets, CancellationToken cancellationToken)
+    {
+        var result = await assets.UpdateAsync(id, body, cancellationToken);
+        return result is { Outcome: AssetWriteOutcome.Succeeded, Asset: { } asset } ? TypedResults.Ok(asset) : Failure(result);
+    }
+
+    private static async Task<IResult> ChangeLocationAsync(int id, ChangeAssetLocationRequest body, AssetService assets, CancellationToken cancellationToken)
+    {
+        var result = await assets.ChangeLocationAsync(id, body, cancellationToken);
+        return result is { Outcome: AssetWriteOutcome.Succeeded, Asset: { } asset } ? TypedResults.Ok(asset) : Failure(result);
+    }
+
+    private static async Task<IResult> ArchiveAsync(int id, [AsParameters] ArchiveAssetRequest request, AssetService assets, CancellationToken cancellationToken)
+    {
+        var result = await assets.ArchiveAsync(id, request, cancellationToken);
+        return result.Outcome == AssetWriteOutcome.Succeeded ? TypedResults.NoContent() : Failure(result);
+    }
+
+    private static async Task<Results<Ok<PagedResult<AssetHistoryEntry>>, ValidationProblem, ProblemHttpResult>> HistoryAsync(
+        int id, [AsParameters] AssetHistoryRequest request, AssetService assets, CancellationToken cancellationToken)
+    {
+        var result = await assets.HistoryAsync(id, request, cancellationToken);
+        return result switch
+        {
+            { Page: { } page } => TypedResults.Ok(page),
+            { Errors: { } errors } => ApiResults.ValidationProblem(errors),
+            _ => NotFound(),
+        };
+    }
+
+    private static async Task<Results<Ok<PagedResult<AssetAssignmentItem>>, ValidationProblem, ProblemHttpResult>> AssignmentsAsync(
+        int id, [AsParameters] AssetAssignmentsRequest request, AssetAssignmentService assignments, CancellationToken cancellationToken)
+    {
+        var result = await assignments.ListAsync(id, request, cancellationToken);
+        return result switch
+        {
+            { Page: { } page } => TypedResults.Ok(page),
+            { Errors: { } errors } => ApiResults.ValidationProblem(errors),
+            _ => NotFound(),
+        };
+    }
+
+    private static async Task<IResult> AssignAsync(int id, AssignAssetRequest body, AssetAssignmentService assignments, CancellationToken cancellationToken)
+    {
+        var result = await assignments.AssignAsync(id, body, cancellationToken);
+        return result is { Outcome: AssetWriteOutcome.Succeeded, Asset: { } asset }
+            ? TypedResults.Created($"{Path}/{id}/assignments", asset)
+            : Failure(result);
+    }
+
+    private static async Task<IResult> ReturnAsync(int id, ReturnAssetRequest body, AssetAssignmentService assignments, CancellationToken cancellationToken)
+    {
+        var result = await assignments.ReturnAsync(id, body, cancellationToken);
+        return result is { Outcome: AssetWriteOutcome.Succeeded, Asset: { } asset } ? TypedResults.Ok(asset) : Failure(result);
+    }
+
+    /// <summary>The response for a write that did not succeed.</summary>
+    private static IResult Failure(AssetWriteResult result) => result.Outcome switch
+    {
+        AssetWriteOutcome.ValidationFailed => ApiResults.ValidationProblem(result.Errors!),
+        AssetWriteOutcome.NotFound => NotFound(),
+        AssetWriteOutcome.DuplicateValue => TypedResults.Problem(
+            "Demirbaş kodu ve seri numarası her demirbaşta farklı olmalıdır; arşivlenmiş demirbaşlar da sayılır.",
+            statusCode: StatusCodes.Status409Conflict,
+            title: "Bu bilgiler başka bir demirbaşta kullanılıyor.",
+            extensions: new Dictionary<string, object?>
+            {
+                ["code"] = "duplicate_value",
+                ["errors"] = ApiResults.CamelCaseKeys(result.Errors!),
+            }),
+        AssetWriteOutcome.ConcurrencyConflict => ApiResults.Problem(
+            StatusCodes.Status409Conflict,
+            "Kayıt siz düzenlerken başka bir kullanıcı tarafından değiştirildi.",
+            "Değişiklikleriniz kaydedilmedi. Kaydı yeniden açıp güncel bilgiler üzerinde tekrar deneyin.",
+            "concurrency_conflict"),
+        AssetWriteOutcome.DirectoryUnavailable => EmployeeEndpoints.DirectoryUnavailable(),
+        _ => AssetProblems.ForRule(result.RuleCode),
+    };
+
+    private static ProblemHttpResult NotFound() =>
+        ApiResults.Problem(StatusCodes.Status404NotFound, "Demirbaş bulunamadı.", "Kayıt silinmiş veya adres yanlış olabilir.", "asset_not_found");
+}
