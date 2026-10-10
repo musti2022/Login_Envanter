@@ -1,4 +1,4 @@
-import { expect, test, type Browser, type Page } from '@playwright/test'
+import { expect, test, type Browser, type Page, type WebSocketRoute } from '@playwright/test'
 import { api, colleague, liveStatus, signInAsMember, unique } from './support.ts'
 
 interface Item {
@@ -9,6 +9,7 @@ interface Item {
 interface AssetDetails {
   id: number
   assetCode: string
+  status: string
   rowVersion: string
 }
 
@@ -112,4 +113,67 @@ test('an edit is warned when another screen saves the asset first', async ({ pag
 
   await expect(page.getByText(/siz düzenlerken başka bir kullanıcı tarafından değiştirildi/)).toBeVisible()
   await expect(page.getByRole('textbox', { name: 'Açıklama' })).toHaveValue('Benim değişikliğim')
+})
+
+test('changes made while the connection was down show up once it is back', async ({ page, browser }) => {
+  // The live connection's socket goes through the test, which can cut it as a network outage would.
+  const sockets: WebSocketRoute[] = []
+  await page.routeWebSocket(/\/hubs\/inventory/, (socket) => {
+    socket.connectToServer()
+    sockets.push(socket)
+  })
+  await signInAsMember(page)
+  const { asset, model, city, department, office } = await assetOf(page, unique('KOPMA'))
+  await page.goto(`/envanter/${asset.id}`)
+  await expect(liveStatus(page)).toContainText('Canlı')
+  const computerName = page.getByText('Bilgisayar Adı', { exact: true }).locator('xpath=following-sibling::dd[1]')
+  await expect(computerName).toHaveText('—')
+  const refreshes: string[] = []
+  page.on('request', (request) => {
+    if (request.url().endsWith(`/api/assets/${asset.id}`)) refreshes.push(request.headers()['x-background-request'] ?? 'user')
+  })
+
+  // The network drops: the socket closes and the hub cannot be reached for a while.
+  const outage = '**/hubs/inventory/negotiate**'
+  await page.route(outage, (route) => route.abort('internetdisconnected'))
+  await sockets.at(-1)!.close({ code: 4000, reason: 'Ağ kesintisi' })
+  await expect(liveStatus(page)).toContainText('Yeniden bağlanıyor')
+
+  // Meanwhile a colleague saves the asset; no notification can reach this screen.
+  const other = await colleagueScreen(browser)
+  await (await api(other.page)).put(`/api/assets/${asset.id}`, {
+    assetCode: asset.assetCode,
+    assetType: 'Desktop',
+    status: asset.status,
+    modelId: model.id,
+    cityId: city.id,
+    departmentId: department.id,
+    locationId: office.id,
+    computerName: 'PC-KESINTIDE',
+    rowVersion: asset.rowVersion,
+  })
+  await other.close()
+  await expect(computerName).toHaveText('—')
+  expect(refreshes).toEqual([])
+
+  // The network is back: the next try connects, and the screen is fetched again from the API.
+  await page.unroute(outage)
+  await expect(liveStatus(page)).toContainText('Canlı', { timeout: 20_000 })
+  await expect(computerName).toHaveText('PC-KESINTIDE')
+  expect(refreshes).toContain('1')
+})
+
+test('signing out in another tab ends the live connection here and asks to sign in again', async ({ page }) => {
+  await signInAsMember(page)
+  await page.goto('/envanter')
+  await expect(liveStatus(page)).toContainText('Canlı')
+
+  const otherTab = await page.context().newPage()
+  await otherTab.goto('/')
+  await otherTab.getByRole('button', { name: 'Çıkış Yap' }).click()
+  await expect(otherTab.getByRole('button', { name: 'Giriş Yap' })).toBeVisible()
+
+  // The API closed this tab's connection; trying again finds the session ended.
+  await expect(page).toHaveURL(/\/giris$/)
+  await expect(page.getByText('Oturumunuz sona erdi. Devam etmek için tekrar giriş yapın.')).toBeVisible()
 })

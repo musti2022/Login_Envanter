@@ -32,21 +32,35 @@ export interface AssetNotification {
 }
 
 /** The part of a SignalR connection the app uses; tests replace it with a fake. */
-export type InventoryConnection = Pick<HubConnection, 'start' | 'stop' | 'on' | 'onclose' | 'onreconnecting' | 'onreconnected'>
+export type InventoryConnection = Pick<HubConnection, 'start' | 'stop' | 'on' | 'onclose'>
 
 /**
  * Sends the hub's state-changing requests (negotiation, Long Polling sends) with the CSRF token, as apiFetch does
- * for the API, and renews a token the API refused once. WebSockets and Server-Sent Events only use GET.
+ * for the API, and renews a token the API refused once. WebSockets and Server-Sent Events only use GET. A request
+ * refused because the session has ended (401) is reported, as apiFetch reports it: trying again cannot help.
  */
 export class CsrfHttpClient extends HttpClient {
   private readonly inner: HttpClient
+  private readonly onUnauthorized: () => void
 
-  constructor(inner?: HttpClient) {
+  constructor(onUnauthorized: () => void, inner?: HttpClient) {
     super()
+    this.onUnauthorized = onUnauthorized
     this.inner = inner ?? new DefaultHttpClient(NullLogger.instance)
   }
 
   override async send(request: HttpRequest): Promise<HttpResponse> {
+    try {
+      return await this.sendWithToken(request)
+    } catch (error) {
+      if (error instanceof HttpError && error.statusCode === 401) {
+        this.onUnauthorized()
+      }
+      throw error
+    }
+  }
+
+  private async sendWithToken(request: HttpRequest): Promise<HttpResponse> {
     if (request.method === 'GET') {
       return this.inner.send(request)
     }
@@ -70,9 +84,18 @@ function withToken(request: HttpRequest, token: string): HttpRequest {
   return { ...request, headers: { ...request.headers, [csrfHeaderName]: token } }
 }
 
-export function createInventoryConnection(): InventoryConnection {
+export interface InventoryConnectionOptions {
+  /** The API refused the connection because the session has ended. */
+  onUnauthorized: () => void
+}
+
+/**
+ * A connection to the hub. It does not reconnect by itself (no withAutomaticReconnect): useLiveUpdates starts it
+ * again after a failed start and after a lost connection alike, with one backoff (see reconnect.ts).
+ */
+export function createInventoryConnection({ onUnauthorized }: InventoryConnectionOptions): InventoryConnection {
   return new HubConnectionBuilder()
-    .withUrl(inventoryHubPath, { httpClient: new CsrfHttpClient() })
+    .withUrl(inventoryHubPath, { httpClient: new CsrfHttpClient(onUnauthorized) })
     .configureLogging(LogLevel.Warning)
     .build()
 }

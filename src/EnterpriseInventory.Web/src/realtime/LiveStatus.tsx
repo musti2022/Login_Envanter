@@ -12,10 +12,15 @@ const shown: Record<LiveState, { label: string; hint: string; color: string }> =
     hint: 'Diğer kullanıcıların değişiklikleri bu ekrana anında yansıyor.',
     color: 'success.main',
   },
+  reconnecting: {
+    label: 'Yeniden bağlanıyor',
+    hint: 'Canlı güncelleme bağlantısı yok; yeniden deneniyor. Bu sırada diğer kullanıcıların değişiklikleri otomatik görünmez; bağlantı gelince ekran güncellenir.',
+    color: 'warning.main',
+  },
   disconnected: {
     label: 'Canlı güncelleme yok',
-    hint: 'Diğer kullanıcıların değişiklikleri otomatik görünmüyor; güncel hali görmek için sayfayı yenileyin.',
-    color: 'warning.main',
+    hint: 'Oturum sona erdiği için canlı güncelleme kapandı.',
+    color: 'text.disabled',
   },
 }
 

@@ -63,6 +63,11 @@ export function onUnauthorized(handler: () => void): () => void {
   }
 }
 
+/** Reports a request refused because the session has ended, made outside apiFetch (the live connection). */
+export function reportUnauthorized() {
+  unauthorizedHandler?.()
+}
+
 /**
  * Runs work whose reads are background reads (see backgroundHeaderName). Only requests sent while the work runs
  * synchronously are marked: TanStack Query starts the refetches of invalidateQueries before it returns.
@@ -109,7 +114,7 @@ export async function apiFetch<T>(path: string, options: ApiRequestOptions = {})
   }
 
   if (response.status === 401 && !options.ignoreUnauthorized) {
-    unauthorizedHandler?.()
+    reportUnauthorized()
   }
 
   if (!response.ok) {

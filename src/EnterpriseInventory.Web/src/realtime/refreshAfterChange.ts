@@ -17,3 +17,13 @@ export function refreshAfterChange(queryClient: QueryClient, assetId: number) {
     void queryClient.invalidateQueries({ queryKey: dashboardQueryKey })
   })
 }
+
+/**
+ * The live connection was down, so notifications may have been missed: everything cached is fetched again, shown
+ * data now and the rest when next shown, as background reads. The session's own queries are left alone.
+ */
+export function refreshEverything(queryClient: QueryClient) {
+  inBackground(() => {
+    void queryClient.invalidateQueries({ predicate: (query) => query.queryKey[0] !== 'auth' })
+  })
+}

@@ -25,7 +25,7 @@ describe('The live connection’s requests', () => {
   it('carry the CSRF token when they change state, as API requests do', async () => {
     const api = mockApi({ 'GET /api/auth/csrf': json(200, { token: 'token-1' }) })
     const inner = new RecordingHttpClient()
-    const client = new CsrfHttpClient(inner)
+    const client = new CsrfHttpClient(() => {}, inner)
 
     await client.send({ method: 'POST', url: '/hubs/inventory/negotiate?negotiateVersion=1' })
     await client.send({ method: 'GET', url: '/hubs/inventory?id=abc' })
@@ -46,19 +46,36 @@ describe('The live connection’s requests', () => {
       return new HttpResponse(200, 'OK', '{}')
     }
 
-    await new CsrfHttpClient(inner).send({ method: 'POST', url: '/hubs/inventory/negotiate' })
+    await new CsrfHttpClient(() => {}, inner).send({ method: 'POST', url: '/hubs/inventory/negotiate' })
 
     expect(inner.sent.map((r) => r.headers?.['X-CSRF-TOKEN'])).toEqual(['stale-token', 'fresh-token'])
   })
 
-  it('pass other refusals on, so the connection knows it was refused', async () => {
+  it.each([
+    ['POST', '/hubs/inventory/negotiate?negotiateVersion=1'],
+    ['GET', '/hubs/inventory?id=abc'],
+  ])('report an ended session (401) on %s and pass the refusal on, without trying again', async (method, url) => {
     setCsrfToken('token-1')
     const inner = new RecordingHttpClient()
     inner.answer = () => {
       throw new HttpError('Unauthorized', 401)
     }
+    const sessionEnded = vi.fn()
 
-    await expect(new CsrfHttpClient(inner).send({ method: 'POST', url: '/hubs/inventory/negotiate' })).rejects.toMatchObject({ statusCode: 401 })
+    await expect(new CsrfHttpClient(sessionEnded, inner).send({ method, url })).rejects.toMatchObject({ statusCode: 401 })
+    expect(sessionEnded).toHaveBeenCalledTimes(1)
     expect(inner.sent).toHaveLength(1)
+  })
+
+  it.each([[403], [500], [503]])('pass a %i refusal on without ending the session', async (status) => {
+    setCsrfToken('token-1')
+    const inner = new RecordingHttpClient()
+    inner.answer = () => {
+      throw new HttpError('Refused', status)
+    }
+    const sessionEnded = vi.fn()
+
+    await expect(new CsrfHttpClient(sessionEnded, inner).send({ method: 'POST', url: '/hubs/inventory/negotiate' })).rejects.toMatchObject({ statusCode: status })
+    expect(sessionEnded).not.toHaveBeenCalled()
   })
 })

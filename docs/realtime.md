@@ -1,4 +1,4 @@
-# Canlı bildirimler (26–28. gün)
+# Canlı bildirimler (26–29. gün)
 
 Kod: `src/EnterpriseInventory.Api/Realtime`, `src/EnterpriseInventory.Api/Security/SessionCookieEvents.cs`,
 `src/EnterpriseInventory.Infrastructure/Identity/UserSessionService.cs` (`CheckAsync`),
@@ -106,9 +106,33 @@ Kod: `src/EnterpriseInventory.Api/Realtime`, `src/EnterpriseInventory.Api/Securi
   uyarısı alırsınız." uyarısı çıkar; "Güncel kaydı yükle" ile yeni sürüme geçilir. Form hiçbir zaman sessizce yeni
   sürüme taşınmaz; eski sürümle kaydetmek `409` ile reddedilir. Açık diyaloglar (zimmet, iade, konum, arşiv) da
   açıldıkları sürümle çalışır.
-- Üst çubuktaki durum göstergesi (`role="status"`): **Canlı** (yeşil), **Bağlanıyor** (gri), **Canlı güncelleme
-  yok** (turuncu; diğer kullanıcıların değişiklikleri otomatik görünmez). Telefonda yalnızca renkli nokta görünür,
-  metin ekran okuyucuya okunur; açıklama ipucunda yazar.
+- Üst çubuktaki durum göstergesi (`role="status"`): **Canlı** (yeşil), **Bağlanıyor** (gri), **Yeniden
+  bağlanıyor** (turuncu; diğer kullanıcıların değişiklikleri o sırada otomatik görünmez), **Canlı güncelleme yok**
+  (gri; oturum sona erdi). Telefonda yalnızca renkli nokta görünür, metin ekran okuyucuya okunur; açıklama ipucunda
+  yazar.
+
+## Yeniden bağlanma ve tam eşitleme (29. gün)
+
+- Bağlantı kurulamazsa (API kapalı, ağ yok) veya kurulduktan sonra koparsa (API yeniden başladı, ağ kesildi, sunucu
+  bağlantıyı kapattı) uygulama açık olduğu sürece **vazgeçmeden** yeniden dener. Kopan bağlantı hemen, sonraki
+  denemeler 2, 5, 10 saniye sonra, ardından 30 saniyede bir denenir (`reconnect.ts`). İlk kurulum hatası ile kopma
+  aynı döngüden geçer; SignalR'ın `withAutomaticReconnect` özelliği bu yüzden kullanılmadı (ilk kurulum hatasını
+  kapsamaz, sınırlı sayıda dener).
+- Bağlantı geri geldiğinde **tam eşitleme** yapılır: kopukluk sırasında gelen olaylar bu ekrana ulaşmadığı için
+  oturum sorguları (`auth`) dışındaki tüm TanStack Query önbelleği geçersiz kılınır. Ekranda görünenler hemen,
+  diğerleri bir sonraki gösterimde API'den yeniden okunur. Bu okumalar da arka plan okumasıdır
+  (`X-Background-Request`), oturumu uzatmaz. Bağlantı ilk denemede kurulursa eşitleme yapılmaz.
+- Düzenleme sayfası açıkken kopukluk sırasında başka biri kaydetmişse, eşitleme 28. gündeki uyarıyı çıkarır; form
+  yine sessizce yeni sürüme taşınmaz.
+- Oturum bittiyse (çıkış başka sekmede yapıldı, süre doldu, AD erişimi kaldırdı) sunucu bağlantıyı kapatır;
+  yeniden deneme `401` alır. Bu durumda yeniden deneme durur, API isteklerindeki `401` ile aynı yol izlenir:
+  kullanıcının önbellekteki verileri silinir ve giriş sayfasında "Oturumunuz sona erdi." uyarısı gösterilir.
+  `403` ve `5xx` oturumu bitirmez, deneme sürer.
+- Yeniden deneme istekleri (negotiate) `/hubs` altında olduğundan etkinlik sayılmaz; açık kalmış bir ekran
+  yeniden bağlanarak oturumu uzatamaz.
+- Bilinen sınır: ilk bağlantı, sayfanın ilk verisi okunduktan hemen sonra kurulur; bu arada (genellikle saniyenin
+  altında) yapılan bir değişiklik bir sonraki olaya veya yenilemeye kadar görünmeyebilir. Kayıt bundan etkilenmez:
+  eski sürümle kaydetmek RowVersion ile `409` olarak reddedilir.
 
 ## Birden fazla sunucu
 
@@ -162,9 +186,10 @@ Events'e veya Long Polling'e düşer; bağlantı çalışır ama daha fazla iste
 | `A_failing_notifier_neither_fails_nor_undoes_a_committed_change` | Bildirim katmanı hata verse de istek başarılı, veri ve audit kaydı yerinde |
 | `AssetChangePublisherTests` (birim) | Yalnızca başarılı ve bir şey değiştiren yazmalar yayımlanır; bildirim hatası loglanır, sonuç değişmez |
 | `A_background_read_is_checked_but_does_not_keep_an_idle_session_alive` | `X-Background-Request` taşıyan okuma oturumu uzatmaz; yazma isteği başlıkla bile etkinlik sayılır |
-| `LiveUpdates.test.tsx` (Vitest) | Bağlanma ve durum göstergesi; detay sayfası başka kullanıcının değişikliğini arka plan okumasıyla gösterir; altı olayın her biri listeyi ve gösterge panelini yeniler; başka demirbaşın olayı detayı yenilemez; bağlantı kopunca ve kurulamayınca gösterge uyarır; sayfadan çıkınca bağlantı kapanır; düzenlemede uyarı ve "Güncel kaydı yükle" |
-| `inventoryHub.test.ts` (Vitest) | Hub istekleri CSRF token'ı taşır; reddedilen token bir kez yenilenir; `401` aynen iletilir |
-| `live.spec.ts` (Playwright, iki tarayıcı) | Başka bilgisayardaki yöneticinin konum değişikliği detay sayfasına sayfa yenilenmeden yansır (arka plan okumasıyla); başka ekranda eklenen demirbaş açık listede görünür; düzenleme sırasında başka ekranda yapılan kayıt uyarı olarak gösterilir, yazılanlar korunur |
+| `LiveUpdates.test.tsx` (Vitest) | Bağlanma ve durum göstergesi; detay sayfası başka kullanıcının değişikliğini arka plan okumasıyla gösterir; altı olayın her biri listeyi ve gösterge panelini yeniler; başka demirbaşın olayı detayı yenilemez; sayfadan çıkınca bağlantı kapanır; düzenlemede uyarı ve "Güncel kaydı yükle". 29. gün: kopan bağlantı hemen, kurulamayan artan aralıklarla yeniden denenir; bağlantı dönünce görünen her şey arka plan okumasıyla yeniden okunur, görünmeyenler geçersiz kılınır, oturum sorgusu okunmaz; ilk denemede kurulan bağlantı eşitleme yapmaz; oturum bitmişse deneme durur ve giriş sayfasına "Oturumunuz sona erdi" ile gidilir; sayfadan çıkınca bekleyen deneme iptal edilir |
+| `inventoryHub.test.ts` (Vitest) | Hub istekleri CSRF token'ı taşır; reddedilen token bir kez yenilenir; `401` (POST ve GET) oturum sonu olarak bildirilir ve tekrar denenmez; `403`, `500`, `503` oturumu bitirmez |
+| `reconnect.test.ts` (Vitest) | Bekleme süreleri 0, 2, 5, 10 saniye, ardından hep 30 saniye |
+| `live.spec.ts` (Playwright, iki tarayıcı) | Başka bilgisayardaki yöneticinin konum değişikliği detay sayfasına sayfa yenilenmeden yansır (arka plan okumasıyla); başka ekranda eklenen demirbaş açık listede görünür; düzenleme sırasında başka ekranda yapılan kayıt uyarı olarak gösterilir, yazılanlar korunur; 29. gün: WebSocket kesilip hub'a ulaşılamazken gösterge "Yeniden bağlanıyor" der, başka yöneticinin bu sırada yaptığı kayıt ekrana gelmez, ağ dönünce bağlantı kurulur ve kayıt arka plan okumasıyla görünür; başka sekmede çıkış yapılınca bu sekme giriş sayfasına "Oturumunuz sona erdi" uyarısıyla gider |
 
 Testler gerçek SQL Server ile çalışır. 26. gün testlerinde saat bir test saatidir ve AD, cevabını her testin
 belirlediği bir test dublörüdür (gerçek AD kontrolü `SambaAccessCheckTests` içindedir); 27. gün testlerinde

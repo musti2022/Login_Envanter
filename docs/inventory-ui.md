@@ -1,4 +1,4 @@
-# Envanter ekranları (16–20., 24., 25. ve 28. gün)
+# Envanter ekranları (16–20., 24., 25., 28. ve 29. gün)
 
 Kod: `src/EnterpriseInventory.Web/src/pages` (`DashboardPage`, `InventoryPage`, `AssetCreatePage`, `AssetEditPage`,
 `AssetDetailPage`) ve `src/EnterpriseInventory.Web/src/inventory`. Testler: aynı klasörlerdeki `*.test.ts(x)`
@@ -102,6 +102,10 @@ Başka bir kullanıcının yaptığı ekleme, düzenleme, arşivleme, zimmet, ia
 gösterge paneline, detay sayfasına, geçmişe ve zimmet geçmişine sayfa yenilenmeden yansır. Düzenleme sırasında gelen
 değişiklik formu ezmez, uyarı olarak gösterilir. Üst çubuktaki gösterge bağlantının durumunu söyler. Ayrıntılar ve
 testler: [`realtime.md`](realtime.md#ekranların-canlı-yenilenmesi-28-gün).
+
+Bağlantı koparsa gösterge "Yeniden bağlanıyor" der ve uygulama kendiliğinden yeniden bağlanır; bağlantı dönünce
+açık ekran API'den yeniden okunur, kopukluk sırasındaki değişiklikler de görünür (29. gün). Oturum bitmişse giriş
+sayfasına gidilir. Ayrıntılar: [`realtime.md`](realtime.md#yeniden-bağlanma-ve-tam-eşitleme-29-gün).
 
 ## Test sonuçları
 

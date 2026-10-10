@@ -1,4 +1,4 @@
-import type { InventoryConnection } from '../realtime/inventoryHub'
+import type { InventoryConnection, InventoryConnectionOptions } from '../realtime/inventoryHub'
 
 type Handler = (...args: unknown[]) => void
 
@@ -9,13 +9,16 @@ type Handler = (...args: unknown[]) => void
 export class FakeHubConnection implements InventoryConnection {
   readonly handlers = new Map<string, Handler[]>()
   readonly closeHandlers: ((error?: Error) => void)[] = []
-  readonly reconnectingHandlers: ((error?: Error) => void)[] = []
-  readonly reconnectedHandlers: ((connectionId?: string) => void)[] = []
+  readonly options: InventoryConnectionOptions
   starts = 0
   stopped = false
 
   /** What start() does; by default it connects at once. */
   startResult: () => Promise<void> = () => Promise.resolve()
+
+  constructor(options: InventoryConnectionOptions) {
+    this.options = options
+  }
 
   start = () => {
     this.starts++
@@ -35,14 +38,6 @@ export class FakeHubConnection implements InventoryConnection {
     this.closeHandlers.push(handler)
   }
 
-  onreconnecting = (handler: (error?: Error) => void) => {
-    this.reconnectingHandlers.push(handler)
-  }
-
-  onreconnected = (handler: (connectionId?: string) => void) => {
-    this.reconnectedHandlers.push(handler)
-  }
-
   /** The hub announces a change. */
   emit(name: string, ...args: unknown[]) {
     for (const handler of this.handlers.get(name) ?? []) {
@@ -50,10 +45,17 @@ export class FakeHubConnection implements InventoryConnection {
     }
   }
 
+  /** The connection is lost, e.g. the API restarted. */
   close(error?: Error) {
     for (const handler of this.closeHandlers) {
       handler(error)
     }
+  }
+
+  /** The API refuses the connection because the session has ended, as the real connection's requests report it. */
+  refuseEndedSession() {
+    this.options.onUnauthorized()
+    return Promise.reject(new Error('Failed to complete negotiation with the server: Error: Unauthorized: Status code \'401\''))
   }
 }
 
@@ -63,8 +65,8 @@ export const fakeHub = {
   /** Applied to each new connection, e.g. to make start() fail. */
   configure: (connection: FakeHubConnection) => void connection,
 
-  create(): FakeHubConnection {
-    const connection = new FakeHubConnection()
+  create(options: InventoryConnectionOptions): FakeHubConnection {
+    const connection = new FakeHubConnection(options)
     this.configure(connection)
     this.connections.push(connection)
     return connection
