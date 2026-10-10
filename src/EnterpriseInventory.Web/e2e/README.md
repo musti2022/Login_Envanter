@@ -18,6 +18,9 @@ bir SQL Server veritabanıyla çalışır. Testlerin ne denediği: [`docs/web-au
    dotnet ef database update --project src/EnterpriseInventory.Infrastructure
    ```
 
+   Yeni bir migration eklendiğinde aynı komut yeniden çalıştırılır. Uygulanmamış migration varsa API hazır olmaz
+   (`/api/health/ready` 503) ve Playwright sunucuyu beklerken zaman aşımıyla durur.
+
 2. ASP.NET Core geliştirme sertifikasını Node'a tanıtın (`NODE_EXTRA_CA_CERTS`, bkz. kök
    [`README.md`](../../../README.md#geliştirme-ortamında-çalıştırma)). Proxy API sertifikasını doğrular; doğrulama
    kapatılmaz.

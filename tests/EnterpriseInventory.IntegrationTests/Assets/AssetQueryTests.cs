@@ -98,7 +98,8 @@ public sealed class AssetQueryTests(SqlServerDatabaseFixture fixture) : IAsyncLi
         var page = await client.GetOkAsync("/api/assets?search=Q-01%27%3B--&status=Assigned&pageSize=50");
 
         Assert.Equal(0, page.GetProperty("totalCount").GetInt32());
-        Assert.Equal(2, _commands.Texts.Count);
+        // The search's matches first (docs/performance.md), then the count and the page.
+        Assert.Equal(3, _commands.Texts.Count);
         Assert.All(_commands.Texts, sql =>
         {
             Assert.Contains("WHERE", sql, StringComparison.Ordinal);

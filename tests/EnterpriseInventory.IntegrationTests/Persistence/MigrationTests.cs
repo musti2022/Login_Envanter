@@ -134,10 +134,11 @@ public class DeploymentScriptTests(SqlServerDatabaseFixture database)
         await using var context = database.CreateContextFor(connectionString);
         Assert.Equal(context.Database.GetMigrations(), await context.Database.GetAppliedMigrationsAsync());
         var indexes = await context.Database
-            .SqlQuery<IndexRow>($"SELECT i.name AS Name, i.is_unique AS IsUnique, i.filter_definition AS FilterDefinition FROM sys.indexes i WHERE i.name IN ('IX_Assets_AssetCode', 'IX_Assets_SerialNumber', 'UX_AssetAssignments_AssetId_Active')")
+            .SqlQuery<IndexRow>($"SELECT i.name AS Name, i.is_unique AS IsUnique, i.filter_definition AS FilterDefinition FROM sys.indexes i WHERE i.name IN ('IX_Assets_AssetCode', 'IX_Assets_SerialNumber', 'UX_AssetAssignments_AssetId_Active', 'IX_AssetAssignments_ReturnedAt')")
             .ToListAsync();
         Assert.Equal(
             [
+                new IndexRow("IX_AssetAssignments_ReturnedAt", false, "([ReturnedAt] IS NOT NULL)"),
                 new IndexRow("IX_Assets_AssetCode", true, null),
                 new IndexRow("IX_Assets_SerialNumber", true, "([SerialNumber] IS NOT NULL)"),
                 new IndexRow("UX_AssetAssignments_AssetId_Active", true, "([ReturnedAt] IS NULL)"),

@@ -15,7 +15,7 @@ internal sealed class ReportStore(ApplicationDbContext db) : IReportStore
         ArgumentNullException.ThrowIfNull(criteria);
 
         // The soft-delete filter stays on: the summary counts the inventory, not the archive.
-        var assets = AssetStore.Filter(db.Assets.AsNoTracking(), criteria);
+        var assets = AssetStore.Filter(db, db.Assets.AsNoTracking(), criteria);
         // Every grouping has the same key shape (one anonymous type), so one query counts them all.
         var groups = grouping switch
         {
@@ -71,8 +71,9 @@ internal sealed class ReportStore(ApplicationDbContext db) : IReportStore
     {
         ArgumentNullException.ThrowIfNull(criteria);
 
-        var (assigned, returned) = await CountMovementsAsync(criteria, cancellationToken).ConfigureAwait(false);
-        var items = await Sorted(Movements(criteria))
+        var listed = await ListSearchMatchesAsync(criteria, cancellationToken).ConfigureAwait(false);
+        var (assigned, returned) = await CountMovementsAsync(criteria, listed, cancellationToken).ConfigureAwait(false);
+        var items = await Sorted(Movements(criteria, listed))
             .Skip((criteria.Page - 1) * criteria.PageSize)
             .Take(criteria.PageSize)
             .ToListAsync(cancellationToken)
@@ -84,34 +85,69 @@ internal sealed class ReportStore(ApplicationDbContext db) : IReportStore
     {
         ArgumentNullException.ThrowIfNull(criteria);
 
-        var (assigned, returned) = await CountMovementsAsync(criteria, cancellationToken).ConfigureAwait(false);
+        var listed = await ListSearchMatchesAsync(criteria, cancellationToken).ConfigureAwait(false);
+        var (assigned, returned) = await CountMovementsAsync(criteria, listed, cancellationToken).ConfigureAwait(false);
         if (assigned + returned > maxRows)
         {
             return new AssignmentReport([], 1, maxRows, assigned + returned, assigned, returned);
         }
 
         // One more than allowed: movements made since the count are not cut off silently.
-        var items = await Sorted(Movements(criteria)).Take(maxRows + 1).ToListAsync(cancellationToken).ConfigureAwait(false);
+        var items = await Sorted(Movements(criteria, listed)).Take(maxRows + 1).ToListAsync(cancellationToken).ConfigureAwait(false);
         return items.Count > maxRows || items.Count != assigned + returned
             ? new AssignmentReport([], 1, maxRows, Math.Max(items.Count, assigned + returned), assigned, returned)
             : new AssignmentReport(items.ConvertAll(Read), 1, maxRows, items.Count, assigned, returned);
     }
 
-    private async Task<(int Assigned, int Returned)> CountMovementsAsync(AssignmentReportCriteria criteria, CancellationToken cancellationToken)
+    private async Task<(int Assigned, int Returned)> CountMovementsAsync(
+        AssignmentReportCriteria criteria, Dictionary<string, SearchMatches> listed, CancellationToken cancellationToken)
     {
         var assigned = criteria.Includes(AssignmentMovementKind.Assigned)
-            ? await Given(criteria).CountAsync(cancellationToken).ConfigureAwait(false)
+            ? await Given(criteria, listed).CountAsync(cancellationToken).ConfigureAwait(false)
             : 0;
         var returned = criteria.Includes(AssignmentMovementKind.Returned)
-            ? await TakenBack(criteria).CountAsync(cancellationToken).ConfigureAwait(false)
+            ? await TakenBack(criteria, listed).CountAsync(cancellationToken).ConfigureAwait(false)
             : 0;
         return (assigned, returned);
     }
 
-    /// <summary>The movements asked for as one query (UNION ALL of assignments given and returned), unsorted.</summary>
-    private IQueryable<MovementRow> Movements(AssignmentReportCriteria criteria)
+    /// <summary>
+    /// The assets and employees each search term matches, found in their own tables before the movements are
+    /// read, when there are at most <see cref="AssetStore.MaxListedMatches"/> of each: newest-first pages of a
+    /// search would otherwise check every movement against both (docs/performance.md).
+    /// </summary>
+    private async Task<Dictionary<string, SearchMatches>> ListSearchMatchesAsync(AssignmentReportCriteria criteria, CancellationToken cancellationToken)
     {
-        var given = Given(criteria).Select(x => new MovementRow
+        var listed = new Dictionary<string, SearchMatches>(StringComparer.Ordinal);
+        foreach (var term in criteria.SearchTerms.Distinct(StringComparer.Ordinal))
+        {
+            var assets = await AssetsMatching(term).Take(AssetStore.MaxListedMatches + 1).ToListAsync(cancellationToken).ConfigureAwait(false);
+            var employees = await EmployeesMatching(term).Take(AssetStore.MaxListedMatches + 1).ToListAsync(cancellationToken).ConfigureAwait(false);
+            if (assets.Count <= AssetStore.MaxListedMatches && employees.Count <= AssetStore.MaxListedMatches)
+            {
+                listed[term] = new SearchMatches(assets, employees);
+            }
+        }
+
+        return listed;
+    }
+
+    /// <summary>Archived assets too: their movements happened.</summary>
+    private IQueryable<int> AssetsMatching(string term) =>
+        db.Assets.IncludingArchived().Where(a => EF.Functions.Collate(a.AssetCode, AssetStore.SearchCollation).Contains(term)).Select(a => a.Id);
+
+    private IQueryable<int> EmployeesMatching(string term) =>
+        db.Employees
+            .Where(e => EF.Functions.Collate(e.SamAccountName, AssetStore.SearchCollation).Contains(term)
+                || EF.Functions.Collate(e.DisplayName, AssetStore.SearchCollation).Contains(term))
+            .Select(e => e.Id);
+
+    private sealed record SearchMatches(List<int> AssetIds, List<int> EmployeeIds);
+
+    /// <summary>The movements asked for as one query (UNION ALL of assignments given and returned), unsorted.</summary>
+    private IQueryable<MovementRow> Movements(AssignmentReportCriteria criteria, Dictionary<string, SearchMatches> listed)
+    {
+        var given = Given(criteria, listed).Select(x => new MovementRow
         {
             AssignmentId = x.Id,
             Movement = AssignmentMovementKind.Assigned,
@@ -130,7 +166,7 @@ internal sealed class ReportStore(ApplicationDbContext db) : IReportStore
             DepartmentName = x.Asset.Department.Name,
             AssetArchived = x.Asset.IsDeleted,
         });
-        var takenBack = TakenBack(criteria).Select(x => new MovementRow
+        var takenBack = TakenBack(criteria, listed).Select(x => new MovementRow
         {
             AssignmentId = x.Id,
             Movement = AssignmentMovementKind.Returned,
@@ -162,9 +198,9 @@ internal sealed class ReportStore(ApplicationDbContext db) : IReportStore
     private static IQueryable<MovementRow> Sorted(IQueryable<MovementRow> movements) =>
         movements.OrderByDescending(m => m.At).ThenByDescending(m => m.Movement).ThenByDescending(m => m.AssignmentId);
 
-    private IQueryable<AssetAssignment> Given(AssignmentReportCriteria criteria)
+    private IQueryable<AssetAssignment> Given(AssignmentReportCriteria criteria, Dictionary<string, SearchMatches> listed)
     {
-        var assignments = Matching(criteria);
+        var assignments = Matching(criteria, listed);
         if (criteria.Start is { } start)
         {
             assignments = assignments.Where(x => x.AssignedAt >= start);
@@ -178,9 +214,9 @@ internal sealed class ReportStore(ApplicationDbContext db) : IReportStore
         return assignments;
     }
 
-    private IQueryable<AssetAssignment> TakenBack(AssignmentReportCriteria criteria)
+    private IQueryable<AssetAssignment> TakenBack(AssignmentReportCriteria criteria, Dictionary<string, SearchMatches> listed)
     {
-        var assignments = Matching(criteria).Where(x => x.ReturnedAt != null);
+        var assignments = Matching(criteria, listed).Where(x => x.ReturnedAt != null);
         if (criteria.Start is { } start)
         {
             assignments = assignments.Where(x => x.ReturnedAt >= start);
@@ -198,15 +234,23 @@ internal sealed class ReportStore(ApplicationDbContext db) : IReportStore
     /// Assignments of the assets and employees asked for, archived assets included: their movements happened.
     /// Search ignores case and accents, like the inventory list's (see <see cref="AssetStore.SearchCollation"/>).
     /// </summary>
-    private IQueryable<AssetAssignment> Matching(AssignmentReportCriteria criteria)
+    private IQueryable<AssetAssignment> Matching(AssignmentReportCriteria criteria, Dictionary<string, SearchMatches> listed)
     {
         var assignments = db.AssetAssignments.IncludingArchived().AsNoTracking();
         foreach (var term in criteria.SearchTerms)
         {
-            assignments = assignments.Where(x =>
-                EF.Functions.Collate(x.Asset.AssetCode, AssetStore.SearchCollation).Contains(term)
-                || EF.Functions.Collate(x.Employee.SamAccountName, AssetStore.SearchCollation).Contains(term)
-                || EF.Functions.Collate(x.Employee.DisplayName, AssetStore.SearchCollation).Contains(term));
+            if (listed.TryGetValue(term, out var matches))
+            {
+                var assetIds = matches.AssetIds;
+                var employeeIds = matches.EmployeeIds;
+                assignments = assignments.Where(x => assetIds.Contains(x.AssetId) || employeeIds.Contains(x.EmployeeId));
+            }
+            else
+            {
+                var assets = AssetsMatching(term);
+                var employees = EmployeesMatching(term);
+                assignments = assignments.Where(x => assets.Contains(x.AssetId) || employees.Contains(x.EmployeeId));
+            }
         }
 
         if (criteria.AssetTypes.Count > 0)

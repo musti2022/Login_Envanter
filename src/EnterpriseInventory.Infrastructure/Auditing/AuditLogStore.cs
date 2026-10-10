@@ -18,7 +18,16 @@ internal sealed class AuditLogStore(ApplicationDbContext db) : IAuditLogStore
     {
         ArgumentNullException.ThrowIfNull(criteria);
 
-        var records = Filter(db.AuditLogs.AsNoTracking(), criteria);
+        // The assets a code matches, found first when there are few: their records are then read through the
+        // (EntityName, EntityId) index instead of comparing every record with the matching codes (docs/performance.md).
+        List<string>? assetIds = null;
+        if (criteria.AssetCode is { } assetCode)
+        {
+            var ids = await AssetIdsMatching(assetCode).Take(AssetStore.MaxListedMatches + 1).ToListAsync(cancellationToken).ConfigureAwait(false);
+            assetIds = ids.Count <= AssetStore.MaxListedMatches ? ids : null;
+        }
+
+        var records = Filter(db.AuditLogs.AsNoTracking(), criteria, assetIds);
         var totalCount = await records.CountAsync(cancellationToken).ConfigureAwait(false);
 
         // Newest first. The ID is the order records were written in, even when two share a timestamp.
@@ -34,6 +43,17 @@ internal sealed class AuditLogStore(ApplicationDbContext db) : IAuditLogStore
         return new PagedResult<AuditLogEntry>(rows.ConvertAll(row => row.ToEntry(labels)), criteria.Page, criteria.PageSize, totalCount);
     }
 
+    /// <summary>
+    /// The IDs, as audit records store them, of the assets whose code contains <paramref name="assetCode"/>. Archived
+    /// assets too: their records are history like any other. Contains escapes % and _.
+    /// </summary>
+    private IQueryable<string> AssetIdsMatching(string assetCode) =>
+#pragma warning disable CA1305 // ToString runs in SQL Server (CONVERT), where no culture applies.
+        db.Assets.IncludingArchived()
+            .Where(a => EF.Functions.Collate(a.AssetCode, AssetStore.SearchCollation).Contains(assetCode))
+            .Select(a => a.Id.ToString());
+#pragma warning restore CA1305
+
     public async Task<AuditLogEntry?> FindAsync(long id, CancellationToken cancellationToken)
     {
         var row = await db.AuditLogs.AsNoTracking()
@@ -44,7 +64,7 @@ internal sealed class AuditLogStore(ApplicationDbContext db) : IAuditLogStore
         return row?.ToEntry(await LabelsAsync([row], cancellationToken).ConfigureAwait(false));
     }
 
-    private IQueryable<AuditLog> Filter(IQueryable<AuditLog> records, AuditLogCriteria criteria)
+    private IQueryable<AuditLog> Filter(IQueryable<AuditLog> records, AuditLogCriteria criteria, List<string>? listedAssetIds)
     {
         if (criteria.EntityName is { } entityName)
         {
@@ -56,15 +76,13 @@ internal sealed class AuditLogStore(ApplicationDbContext db) : IAuditLogStore
             records = records.Where(l => l.EntityId == entityId);
         }
 
-        if (criteria.AssetCode is { } assetCode)
+        if (listedAssetIds is not null)
         {
-            // Archived assets too: their records are history like any other. Contains escapes % and _.
-            // ToString runs in SQL Server (CONVERT), where no culture applies.
-#pragma warning disable CA1305
-            var assetIds = db.Assets.IncludingArchived()
-                .Where(a => EF.Functions.Collate(a.AssetCode, AssetStore.SearchCollation).Contains(assetCode))
-                .Select(a => a.Id.ToString());
-#pragma warning restore CA1305
+            records = records.Where(l => l.EntityName == AssetAuditTrail.EntityName && listedAssetIds.Contains(l.EntityId));
+        }
+        else if (criteria.AssetCode is { } assetCode)
+        {
+            var assetIds = AssetIdsMatching(assetCode);
             records = records.Where(l => l.EntityName == AssetAuditTrail.EntityName && assetIds.Contains(l.EntityId));
         }
 

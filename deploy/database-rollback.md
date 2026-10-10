@@ -58,6 +58,7 @@ yapılır.
 
 | Migration | Geri alındığında | Veri kaybı riski |
 | --- | --- | --- |
+| `AddReportingIndexes` | Üç indeks silinir (`IX_Assets_IsDeleted_AssetCode`, `IX_AssetAssignments_AssignedAt`, `IX_AssetAssignments_ReturnedAt`). | Veri kaybı yok; derin sayfalar ve zimmet hareketleri raporu yavaşlar ([performans](../docs/performance.md)). |
 | `AddUserSessions` | `UserSessions` tablosu silinir. | Oturum geçmişi kaybolur, açık oturumlar biter (kullanıcılar yeniden giriş yapar). Giriş/çıkış audit kayıtları `AuditLogs`'ta kalır. Gerekirse tablo önceden yedeklenir. |
 | `AddSignInAuditActions` | `CK_AuditLogs_Action` eski haline (1–7) döner. | Veri silinmez, ama `SignedIn`/`SignedOut`/`AccessRevoked` (8–10) audit kaydı varsa kısıt eklenemez ve geri alma **reddedilir**. Audit kayıtları silinmez; bu noktadan geriye yalnızca yedekten dönülür. |
 | `InitialCreate` | Bütün tablolar silinir. | **Tüm veri.** Üretimde kullanılmaz; yerine yedekten dönülür. |

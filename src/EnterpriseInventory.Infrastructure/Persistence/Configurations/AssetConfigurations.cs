@@ -57,6 +57,9 @@ internal sealed class AssetConfiguration : IEntityTypeConfiguration<Asset>
         builder.HasIndex(a => a.AssetCode).IsUnique();
         builder.HasIndex(a => a.SerialNumber).IsUnique().HasFilter("[SerialNumber] IS NOT NULL");
         builder.HasIndex(a => new { a.IsDeleted, a.Status });
+        // The list's default order (code) within the active or archived assets, so a deep page skips index rows instead
+        // of looking up every row it passes over (see docs/performance.md).
+        builder.HasIndex(a => new { a.IsDeleted, a.AssetCode });
 
         // Archived assets are left out of every query unless it opts in (see SoftDelete.IncludingArchived).
         builder.HasQueryFilter(SoftDelete.FilterName, a => !a.IsDeleted);
@@ -94,6 +97,9 @@ internal sealed class AssetAssignmentConfiguration : IEntityTypeConfiguration<As
             .HasFilter("[ReturnedAt] IS NULL")
             .HasDatabaseName("UX_AssetAssignments_AssetId_Active");
         builder.HasIndex(x => new { x.AssetId, x.AssignedAt });
+        // The movement report and the dashboard read assignments and returns by date (see docs/performance.md).
+        builder.HasIndex(x => x.AssignedAt);
+        builder.HasIndex(x => x.ReturnedAt).HasFilter("[ReturnedAt] IS NOT NULL");
 
         // Follows the asset's filter, so an assignment is never read without its (required) asset.
         builder.HasQueryFilter(SoftDelete.FilterName, x => !x.Asset.IsDeleted);

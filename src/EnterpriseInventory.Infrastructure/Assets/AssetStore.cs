@@ -31,7 +31,7 @@ internal sealed partial class AssetStore(
     {
         ArgumentNullException.ThrowIfNull(criteria);
 
-        var assets = Matching(criteria);
+        var assets = await MatchingAsync(criteria, cancellationToken).ConfigureAwait(false);
         var totalCount = await assets.CountAsync(cancellationToken).ConfigureAwait(false);
 
         var items = await ReadListItemsAsync(
@@ -44,7 +44,7 @@ internal sealed partial class AssetStore(
     {
         ArgumentNullException.ThrowIfNull(criteria);
 
-        var assets = Matching(criteria);
+        var assets = await MatchingAsync(criteria, cancellationToken).ConfigureAwait(false);
         var matchCount = await assets.CountAsync(cancellationToken).ConfigureAwait(false);
         if (matchCount > maxRows)
         {
@@ -75,8 +75,13 @@ internal sealed partial class AssetStore(
     }
 
     /// <summary>The inventory table's columns, flattened to names, for the assets of <paramref name="assets"/>.</summary>
-    private static async Task<List<AssetListItem>> ReadListItemsAsync(IQueryable<Asset> assets, CancellationToken cancellationToken)
+    private async Task<List<AssetListItem>> ReadListItemsAsync(IQueryable<Asset> assets, CancellationToken cancellationToken)
     {
+        // An asset has at most one active assignment (a filtered unique index), so MAX is its holder. SQL Server
+        // turns MAX subqueries into one join with the active assignments; TOP(1), or the navigation's
+        // FirstOrDefault, looks the holder up row by row: 37,000 pages for a page of 25, 400,000 for an export of
+        // 20,000 assets (docs/performance.md).
+        var active = ActiveAssignments();
         var rows = await assets
             .Select(a => new
             {
@@ -91,10 +96,9 @@ internal sealed partial class AssetStore(
                 CityName = a.City.Name,
                 DepartmentName = a.Department.Name,
                 LocationName = a.Location != null ? a.Location.Name : null,
-                Holder = a.Assignments
-                    .Where(x => x.ReturnedAt == null)
-                    .Select(x => new { x.Employee.SamAccountName, x.Employee.DisplayName, x.AssignmentDescription })
-                    .FirstOrDefault(),
+                HolderUserName = active.Where(x => x.AssetId == a.Id).Max(x => (string?)x.Employee.SamAccountName),
+                HolderDisplayName = active.Where(x => x.AssetId == a.Id).Max(x => (string?)x.Employee.DisplayName),
+                HolderDescription = active.Where(x => x.AssetId == a.Id).Max(x => x.AssignmentDescription),
                 a.IsDeleted,
                 a.CreatedAt,
                 a.UpdatedAt,
@@ -114,41 +118,70 @@ internal sealed partial class AssetStore(
             r.CityName,
             r.DepartmentName,
             r.LocationName,
-            r.Holder?.SamAccountName,
-            r.Holder?.DisplayName,
-            r.Holder?.AssignmentDescription,
+            r.HolderUserName,
+            r.HolderDisplayName,
+            r.HolderDescription,
             r.IsDeleted,
             r.CreatedAt,
             r.UpdatedAt));
     }
 
+    /// <summary>
+    /// A search that matches at most this many assets reaches the list query as their IDs. With the search itself
+    /// in the query, SQL Server walks the assets in page order and checks each one against every place a term can
+    /// match, hoping to fill the page soon: for a term that matches a few assets of 20,000, 620,000 pages and a
+    /// second (docs/performance.md). Broad searches fill the page soon, so they stay in the query.
+    /// </summary>
+    internal const int MaxListedMatches = 1000;
+
     /// <summary>The assets a list or export with these criteria holds, unsorted.</summary>
-    private IQueryable<Asset> Matching(AssetListCriteria criteria)
+    private async Task<IQueryable<Asset>> MatchingAsync(AssetListCriteria criteria, CancellationToken cancellationToken)
     {
+        var listed = new Dictionary<string, List<int>>(StringComparer.Ordinal);
+        foreach (var term in criteria.SearchTerms.Distinct(StringComparer.Ordinal))
+        {
+            var ids = await SearchMatches(db, term, criteria.Archived)
+                .Distinct()
+                .Take(MaxListedMatches + 1)
+                .ToListAsync(cancellationToken)
+                .ConfigureAwait(false);
+            if (ids.Count <= MaxListedMatches)
+            {
+                listed[term] = ids;
+            }
+        }
+
         // Normal lists rely on the soft-delete filter; only the archive list turns it off, to show archived assets.
         var source = criteria.Archived ? db.Assets.IncludingArchived().Where(a => a.IsDeleted) : db.Assets;
-        return Filter(source.AsNoTracking(), criteria);
+        return Filter(db, source.AsNoTracking(), criteria, listed);
     }
 
+    /// <summary>Assignments not yet returned.</summary>
+    /// <remarks>
+    /// Not <c>IncludingArchived</c>: turning the soft-delete filter off in a subquery turns it off for the whole
+    /// query, and archived assets would join the list.
+    /// </remarks>
+    private IQueryable<AssetAssignment> ActiveAssignments() => ActiveAssignments(db);
+
+    private static IQueryable<AssetAssignment> ActiveAssignments(ApplicationDbContext db) =>
+        db.AssetAssignments.AsNoTracking().Where(x => x.ReturnedAt == null);
+
     /// <summary>The inventory list's filters; the report screen's summary uses them too, so both count the same assets.</summary>
-    internal static IQueryable<Asset> Filter(IQueryable<Asset> assets, AssetListCriteria criteria)
+    /// <param name="listedMatches">Search terms already matched, with the IDs of their assets (see <see cref="MaxListedMatches"/>).</param>
+    internal static IQueryable<Asset> Filter(
+        ApplicationDbContext db, IQueryable<Asset> assets, AssetListCriteria criteria, IReadOnlyDictionary<string, List<int>>? listedMatches = null)
     {
-        // Contains becomes LIKE with its wildcards escaped, so % and _ are plain characters.
         foreach (var term in criteria.SearchTerms)
         {
-            assets = assets.Where(a =>
-                EF.Functions.Collate(a.AssetCode, SearchCollation).Contains(term)
-                || EF.Functions.Collate(a.ComputerName!, SearchCollation).Contains(term)
-                || EF.Functions.Collate(a.SerialNumber!, SearchCollation).Contains(term)
-                || EF.Functions.Collate(a.Brand.Name, SearchCollation).Contains(term)
-                || EF.Functions.Collate(a.Model.Name, SearchCollation).Contains(term)
-                || EF.Functions.Collate(a.City.Name, SearchCollation).Contains(term)
-                || EF.Functions.Collate(a.Department.Name, SearchCollation).Contains(term)
-                || EF.Functions.Collate(a.Location!.Name, SearchCollation).Contains(term)
-                || a.Assignments.Any(x => x.ReturnedAt == null
-                    && (EF.Functions.Collate(x.Employee.SamAccountName, SearchCollation).Contains(term)
-                        || EF.Functions.Collate(x.Employee.DisplayName, SearchCollation).Contains(term)
-                        || EF.Functions.Collate(x.AssignmentDescription!, SearchCollation).Contains(term))));
+            if (listedMatches is not null && listedMatches.TryGetValue(term, out var ids))
+            {
+                assets = assets.Where(a => ids.Contains(a.Id));
+            }
+            else
+            {
+                var matches = SearchMatches(db, term, criteria.Archived);
+                assets = assets.Where(a => matches.Contains(a.Id));
+            }
         }
 
         if (criteria.Statuses.Count > 0)
@@ -189,10 +222,38 @@ internal sealed partial class AssetStore(
         return assets;
     }
 
+    /// <summary>
+    /// The IDs of the assets <paramref name="term"/> matches anywhere the list shows: code, computer name, serial
+    /// number, brand, model, city, department, location, or the holder's user name, name and assignment description.
+    /// </summary>
+    /// <remarks>
+    /// Contains becomes LIKE with its wildcards escaped, so % and _ are plain characters. Each place is its own
+    /// branch of one UNION ALL, which SQL Server reads with a join per branch; the same conditions joined with OR
+    /// are checked asset by asset, and read 660,000 pages for a search over 20,000 assets (docs/performance.md).
+    /// </remarks>
+    /// <param name="archived">Archived assets too (the archive list); the soft-delete filter is off for the whole query then.</param>
+    private static IQueryable<int> SearchMatches(ApplicationDbContext db, string term, bool archived) =>
+        (archived ? db.Assets.IncludingArchived() : db.Assets)
+            .Where(a => EF.Functions.Collate(a.AssetCode, SearchCollation).Contains(term)
+                || EF.Functions.Collate(a.ComputerName!, SearchCollation).Contains(term)
+                || EF.Functions.Collate(a.SerialNumber!, SearchCollation).Contains(term))
+            .Select(a => a.Id)
+            .Concat(db.Assets.Where(a => EF.Functions.Collate(a.Brand.Name, SearchCollation).Contains(term)).Select(a => a.Id))
+            .Concat(db.Assets.Where(a => EF.Functions.Collate(a.Model.Name, SearchCollation).Contains(term)).Select(a => a.Id))
+            .Concat(db.Assets.Where(a => EF.Functions.Collate(a.City.Name, SearchCollation).Contains(term)).Select(a => a.Id))
+            .Concat(db.Assets.Where(a => EF.Functions.Collate(a.Department.Name, SearchCollation).Contains(term)).Select(a => a.Id))
+            .Concat(db.Assets.Where(a => EF.Functions.Collate(a.Location!.Name, SearchCollation).Contains(term)).Select(a => a.Id))
+            .Concat(ActiveAssignments(db)
+                .Where(x => EF.Functions.Collate(x.Employee.SamAccountName, SearchCollation).Contains(term)
+                    || EF.Functions.Collate(x.Employee.DisplayName, SearchCollation).Contains(term)
+                    || EF.Functions.Collate(x.AssignmentDescription!, SearchCollation).Contains(term))
+                .Select(x => x.AssetId));
+
     /// <summary>The chosen column first; the asset code (unique) and ID break ties, so pages never overlap.</summary>
-    private static IQueryable<Asset> Sort(IQueryable<Asset> assets, AssetListCriteria criteria)
+    private IQueryable<Asset> Sort(IQueryable<Asset> assets, AssetListCriteria criteria)
     {
         var descending = criteria.Descending;
+        var active = ActiveAssignments();
         var sorted = criteria.SortBy switch
         {
             AssetSortField.ComputerName => By(a => a.ComputerName),
@@ -204,8 +265,9 @@ internal sealed partial class AssetStore(
             AssetSortField.CityName => By(a => a.City.Name),
             AssetSortField.DepartmentName => By(a => a.Department.Name),
             AssetSortField.LocationName => By(a => a.Location != null ? a.Location.Name : null),
-            AssetSortField.AssignedUserName => By(a => a.Assignments.Where(x => x.ReturnedAt == null).Select(x => x.Employee.SamAccountName).FirstOrDefault()),
-            AssetSortField.AssignedDisplayName => By(a => a.Assignments.Where(x => x.ReturnedAt == null).Select(x => x.Employee.DisplayName).FirstOrDefault()),
+            // MAX for the holder, as in ReadListItemsAsync: one join instead of a lookup per asset.
+            AssetSortField.AssignedUserName => By(a => active.Where(x => x.AssetId == a.Id).Max(x => (string?)x.Employee.SamAccountName)),
+            AssetSortField.AssignedDisplayName => By(a => active.Where(x => x.AssetId == a.Id).Max(x => (string?)x.Employee.DisplayName)),
             AssetSortField.CreatedAt => By(a => a.CreatedAt),
             AssetSortField.UpdatedAt => By(a => a.UpdatedAt),
             _ => By(a => a.AssetCode),

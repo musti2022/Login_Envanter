@@ -506,3 +506,40 @@ END;
 COMMIT;
 GO
 
+BEGIN TRANSACTION;
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20261010092652_AddReportingIndexes'
+)
+BEGIN
+    CREATE INDEX [IX_Assets_IsDeleted_AssetCode] ON [Assets] ([IsDeleted], [AssetCode]);
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20261010092652_AddReportingIndexes'
+)
+BEGIN
+    CREATE INDEX [IX_AssetAssignments_AssignedAt] ON [AssetAssignments] ([AssignedAt]);
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20261010092652_AddReportingIndexes'
+)
+BEGIN
+    EXEC(N'CREATE INDEX [IX_AssetAssignments_ReturnedAt] ON [AssetAssignments] ([ReturnedAt]) WHERE [ReturnedAt] IS NOT NULL');
+END;
+
+IF NOT EXISTS (
+    SELECT * FROM [__EFMigrationsHistory]
+    WHERE [MigrationId] = N'20261010092652_AddReportingIndexes'
+)
+BEGIN
+    INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+    VALUES (N'20261010092652_AddReportingIndexes', N'10.0.12');
+END;
+
+COMMIT;
+GO
+

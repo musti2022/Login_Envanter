@@ -61,6 +61,10 @@ Veritabanının kendisi şu kuralları uygular (uygulamayı atlayan bir SQL de r
 | Durum, tür ve audit işlem değerleri geçerli | `CK_Assets_Status`, `CK_Assets_AssetType`, `CK_AuditLogs_Action` |
 | Oturum anahtarı özeti benzersiz; bitiş zamanı ile bitiş nedeni birlikte dolu; geçerli bitiş nedeni; son işlem ve mutlak bitiş başlangıçtan sonra | `IX_UserSessions_KeyHash`, `CK_UserSessions_Ended`, `CK_UserSessions_EndReason`, `CK_UserSessions_Times` |
 
+Kural taşımayan, yalnızca sorguları hızlandıran indeksler (`IX_Assets_IsDeleted_AssetCode`,
+`IX_AssetAssignments_AssignedAt`, filtreli `IX_AssetAssignments_ReturnedAt`) ve ölçümleri:
+[`performance.md`](performance.md).
+
 ## Collation
 
 Veritabanı **`Turkish_CI_AS`** ile oluşturulmalıdır. Benzersiz ad kontrolleri ve sıralama Türkçe kurallara
