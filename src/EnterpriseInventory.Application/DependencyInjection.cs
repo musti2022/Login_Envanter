@@ -3,6 +3,7 @@ using EnterpriseInventory.Application.Auditing;
 using EnterpriseInventory.Application.Authentication;
 using EnterpriseInventory.Application.Employees;
 using EnterpriseInventory.Application.Lookups;
+using EnterpriseInventory.Application.Reports;
 using FluentValidation;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -23,6 +24,8 @@ public static class DependencyInjection
         services.AddScoped<LookupService>();
         services.AddScoped<EmployeeService>();
         services.AddScoped<AuditLogService>();
+        services.AddScoped<AssetSummaryService>();
+        services.AddScoped<AssignmentReportService>();
         return services;
     }
 }

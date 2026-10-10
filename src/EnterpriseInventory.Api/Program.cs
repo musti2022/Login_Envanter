@@ -9,6 +9,7 @@ using EnterpriseInventory.Api.Health;
 using EnterpriseInventory.Api.Http;
 using EnterpriseInventory.Api.Lookups;
 using EnterpriseInventory.Api.Realtime;
+using EnterpriseInventory.Api.Reports;
 using EnterpriseInventory.Api.Security;
 using EnterpriseInventory.Application;
 using EnterpriseInventory.Application.Abstractions;
@@ -102,6 +103,7 @@ try
     app.MapLookupEndpoints();
     app.MapEmployeeEndpoints();
     app.MapAuditLogEndpoints();
+    app.MapReportEndpoints();
     app.MapRealtime();
 
     await app.RunAsync();

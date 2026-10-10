@@ -37,13 +37,15 @@ interface AssetFiltersProps {
   params: AssetListParams
   /** Applies the changes to the list address; `replace` corrects it without a new history entry. */
   onChange: (changes: Partial<AssetListParams>, options?: { replace?: boolean }) => void
+  /** Offers "Arşivlenmişleri göster"; a report that never counts archived assets leaves it out. */
+  archiveSwitch?: boolean
 }
 
 /**
  * Search and filters above the inventory table. Every change goes to the page address and back to page 1, so
  * the table, the address and the API request always agree. On small screens the filters fold under a button.
  */
-export function AssetFilters({ params, onChange }: AssetFiltersProps) {
+export function AssetFilters({ params, onChange, archiveSwitch = true }: AssetFiltersProps) {
   const theme = useTheme()
   const isDesktop = useMediaQuery(theme.breakpoints.up('md'))
   const [open, setOpen] = useState(false)
@@ -142,10 +144,12 @@ export function AssetFilters({ params, onChange }: AssetFiltersProps) {
             query={departments}
             onChange={(departmentId) => set({ departmentId })}
           />
-          <FormControlLabel
-            control={<Switch checked={params.archived} onChange={(event) => set({ archived: event.target.checked })} />}
-            label="Arşivlenmişleri göster"
-          />
+          {archiveSwitch && (
+            <FormControlLabel
+              control={<Switch checked={params.archived} onChange={(event) => set({ archived: event.target.checked })} />}
+              label="Arşivlenmişleri göster"
+            />
+          )}
         </Box>
       </Collapse>
     </Box>
@@ -208,7 +212,7 @@ interface MultiSelectProps<T extends string> {
   onChange: (values: T[]) => void
 }
 
-function MultiSelect<T extends string>({ label, values, options, labels, onChange }: MultiSelectProps<T>) {
+export function MultiSelect<T extends string>({ label, values, options, labels, onChange }: MultiSelectProps<T>) {
   return (
     <TextField
       select
@@ -252,7 +256,7 @@ interface LookupSelectProps {
   onChange: (value: number | null) => void
 }
 
-function LookupSelect({ label, value, query, disabledText, onChange }: LookupSelectProps) {
+export function LookupSelect({ label, value, query, disabledText, onChange }: LookupSelectProps) {
   const items = query.data ?? []
   const known = value !== null && items.some((item) => item.id === value)
   const helperText = disabledText ?? (query.isError ? 'Liste alınamadı.' : undefined)

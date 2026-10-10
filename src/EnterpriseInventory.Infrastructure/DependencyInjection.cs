@@ -6,6 +6,7 @@ using EnterpriseInventory.Application.Dashboard;
 using EnterpriseInventory.Application.Employees;
 using EnterpriseInventory.Application.Exports;
 using EnterpriseInventory.Application.Lookups;
+using EnterpriseInventory.Application.Reports;
 using EnterpriseInventory.Infrastructure.ActiveDirectory;
 using EnterpriseInventory.Infrastructure.Assets;
 using EnterpriseInventory.Infrastructure.Auditing;
@@ -15,6 +16,7 @@ using EnterpriseInventory.Infrastructure.Identity;
 using EnterpriseInventory.Infrastructure.Lookups;
 using EnterpriseInventory.Infrastructure.Persistence;
 using EnterpriseInventory.Infrastructure.Persistence.Interceptors;
+using EnterpriseInventory.Infrastructure.Reports;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -44,6 +46,7 @@ public static class DependencyInjection
         services.AddScoped<IDashboardStore, DashboardStore>();
         services.AddScoped<ILookupStore, LookupStore>();
         services.AddScoped<IAuditLogStore, AuditLogStore>();
+        services.AddScoped<IReportStore, ReportStore>();
         services.AddSingleton<ISpreadsheetWriter, OpenXmlSpreadsheetWriter>();
         services.AddDbContext<ApplicationDbContext>((serviceProvider, options) =>
         {

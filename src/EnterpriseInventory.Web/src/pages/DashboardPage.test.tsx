@@ -112,7 +112,8 @@ describe('DashboardPage', () => {
         .map((item) => item.textContent),
     ).toEqual(['İstanbul600 zimmetli · 800', 'Ankara200 zimmetli · 300', 'Diğer 3 şehir100 zimmetli · 150'])
     expect(within(cities).getByRole('link', { name: 'İstanbul' })).toHaveAttribute('href', '/envanter?cityId=1')
-    expect(within(cities).getAllByRole('link')).toHaveLength(2)
+    // The rest are in the full report.
+    expect(within(cities).getByRole('link', { name: 'Diğer 3 şehir' })).toHaveAttribute('href', '/raporlar')
     const departments = screen.getByRole('list', { name: 'Departmanlara göre demirbaş sayısı' })
     expect(within(departments).getByRole('listitem')).toHaveTextContent('Bilgi İşlem900 zimmetli · 1.250')
     expect(within(departments).getByRole('link', { name: 'Bilgi İşlem' })).toHaveAttribute('href', '/envanter?departmentId=5')
@@ -136,7 +137,7 @@ describe('DashboardPage', () => {
         .map((item) => item.textContent),
     ).toEqual(['Dell700', 'HP500', 'Diğer 2 marka50'])
     expect(within(brands).getByRole('link', { name: 'HP' })).toHaveAttribute('href', '/envanter?brandId=4')
-    expect(within(brands).getAllByRole('link')).toHaveLength(2)
+    expect(within(brands).getByRole('link', { name: 'Diğer 2 marka' })).toHaveAttribute('href', '/raporlar?groupBy=brand')
   })
 
   it('shows twelve months of assignments and returns as bars, and as a table on request', async () => {

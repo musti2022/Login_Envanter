@@ -1,6 +1,7 @@
 using System.Globalization;
 using EnterpriseInventory.Application.Abstractions;
 using EnterpriseInventory.Application.Exports;
+using EnterpriseInventory.Application.Reports;
 using FluentValidation;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -93,7 +94,7 @@ internal static class AssetSpreadsheet
     public const string ListSheet = "Envanter";
     public const string InfoSheet = "Bilgi";
 
-    private const string All = "Tümü";
+    internal const string All = "Tümü";
 
     public static readonly IReadOnlyList<SpreadsheetColumn> Columns =
     [
@@ -150,22 +151,14 @@ internal static class AssetSpreadsheet
             ]);
         }
 
-        var offset = localNow.Offset;
-        IReadOnlyList<IReadOnlyList<object?>> info =
+        List<IReadOnlyList<object?>> info =
         [
             ["Rapor", criteria.Archived ? "Arşivlenmiş demirbaşlar" : "Envanter listesi"],
             ["Oluşturan", userName],
             ["Oluşturulma zamanı", localNow.DateTime],
-            ["Saat dilimi", string.Create(CultureInfo.InvariantCulture, $"{zone.Id} (UTC{(offset < TimeSpan.Zero ? '-' : '+')}{offset:hh\\:mm})")],
+            ["Saat dilimi", ReportingTime.Describe(zone, localNow)],
             ["Demirbaş sayısı", items.Count],
-            ["Arama", criteria.SearchTerms.Count > 0 ? string.Join(' ', criteria.SearchTerms) : "Yok"],
-            ["Durum", criteria.Statuses.Count > 0 ? string.Join(", ", criteria.Statuses.Select(AssetLabels.Of)) : All],
-            ["Tür", criteria.AssetTypes.Count > 0 ? string.Join(", ", criteria.AssetTypes.Select(AssetLabels.Of)) : All],
-            ["Marka", Name(criteria.BrandId, names.Brand)],
-            ["Model", Name(criteria.ModelId, names.Model)],
-            ["Şehir", Name(criteria.CityId, names.City)],
-            ["Departman", Name(criteria.DepartmentId, names.Department)],
-            ["Lokasyon", Name(criteria.LocationId, names.Location)],
+            .. FilterRows(criteria, names),
             ["Sıralama", $"{AssetLabels.Of(criteria.SortBy)}, {(criteria.Descending ? "azalan" : "artan")}"],
         ];
 
@@ -177,12 +170,29 @@ internal static class AssetSpreadsheet
             ]);
     }
 
-    private static DateTime Local(DateTimeOffset value, TimeZoneInfo zone) => TimeZoneInfo.ConvertTime(value, zone).DateTime;
+    /// <summary>The "Bilgi" rows naming the filters a list was made with; "Tümü" for a filter that is not set.</summary>
+    internal static IEnumerable<IReadOnlyList<object?>> FilterRows(AssetListCriteria criteria, AssetFilterNames names) =>
+    [
+        ["Arama", criteria.SearchTerms.Count > 0 ? string.Join(' ', criteria.SearchTerms) : "Yok"],
+        ["Durum", criteria.Statuses.Count > 0 ? string.Join(", ", criteria.Statuses.Select(AssetLabels.Of)) : All],
+        ["Tür", Types(criteria.AssetTypes)],
+        ["Marka", Name(criteria.BrandId, names.Brand)],
+        ["Model", Name(criteria.ModelId, names.Model)],
+        ["Şehir", Name(criteria.CityId, names.City)],
+        ["Departman", Name(criteria.DepartmentId, names.Department)],
+        ["Lokasyon", Name(criteria.LocationId, names.Location)],
+    ];
 
-    private static string Name(int? id, string? name) => id switch
+    internal static string Types(IReadOnlyList<Domain.Assets.AssetType> types) =>
+        types.Count > 0 ? string.Join(", ", types.Select(AssetLabels.Of)) : All;
+
+    /// <summary>A filter's name; "Tümü" when it is not set, and the ID when nothing has it (any more).</summary>
+    internal static string Name(int? id, string? name) => id switch
     {
         null => All,
         { } value when name is null => string.Create(CultureInfo.InvariantCulture, $"Kimlik {value} (kayıt bulunamadı)"),
         _ => name!,
     };
+
+    private static DateTime Local(DateTimeOffset value, TimeZoneInfo zone) => ReportingTime.Local(value, zone);
 }

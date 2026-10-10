@@ -16,6 +16,8 @@ sahte AD). Sunucu tarafı: [`assets-api.md`](assets-api.md), [`lookups-api.md`](
 - 33. gün: şehir/departman satırlarında zimmetli sayısı, tür ve marka dağılımı, aylık zimmet hareketleri grafiği;
   listeler en büyük 8 satır ve "Diğer N şehir" ile sınırlı. Ayrıntılar ve tutarlılık testleri:
   [`reports.md`](reports.md).
+- 34. gün: "Diğer N şehir/departman/marka" satırı Raporlar ekranındaki tam listeyi açar. Raporlar ekranı (envanter
+  özeti ve zimmet hareketleri, Türkçe filtreler, Excel): [`reports.md`](reports.md#rapor-ekranı-34-gün).
 
 ## Envanter listesi (17–18. gün)
 

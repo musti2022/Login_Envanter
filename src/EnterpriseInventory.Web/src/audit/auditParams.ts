@@ -18,7 +18,7 @@ function positiveInteger(value: string | null, max: number): number | null {
 }
 
 /** A real calendar day in YYYY-MM-DD, or ''. */
-function day(value: string | null): string {
+export function calendarDay(value: string | null): string {
   if (value === null || !dayPattern.test(value)) return ''
   const date = startOfDay(value)
   const [year, month, dayOfMonth] = value.split('-').map(Number)
@@ -34,8 +34,8 @@ export function parseAuditParams(search: URLSearchParams): AuditLogParams {
   const entityName = search.get('entityName')
   const knownEntity = (auditEntityNames as readonly string[]).includes(entityName ?? '') ? (entityName as AuditEntityName) : null
   const entityId = (search.get('entityId') ?? '').trim()
-  const fromDate = day(search.get('from'))
-  const toDate = day(search.get('to'))
+  const fromDate = calendarDay(search.get('from'))
+  const toDate = calendarDay(search.get('to'))
   return {
     page: positiveInteger(search.get('page'), 100_000) ?? defaultAuditLogParams.page,
     pageSize:

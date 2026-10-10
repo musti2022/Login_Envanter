@@ -10,6 +10,7 @@ import { InventoryPage } from '../pages/InventoryPage'
 import { LoginPage } from '../pages/LoginPage'
 import { NotFoundPage } from '../pages/NotFoundPage'
 import { PlaceholderPage } from '../pages/PlaceholderPage'
+import { ReportsPage } from '../pages/ReportsPage'
 import { RouteErrorPage } from '../pages/RouteErrorPage'
 
 export const routes: RouteObject[] = [
@@ -60,17 +61,8 @@ export const routes: RouteObject[] = [
               />
             ),
           },
-          {
-            path: 'raporlar',
-            element: (
-              <PlaceholderPage
-                title="Raporlar"
-                description="Envanter ve zimmet raporlarını görüntüleyin ve dışa aktarın."
-                emptyTitle="Henüz rapor yok"
-                emptyDescription="Raporlar, envanter ve zimmet verileri oluştuktan sonra eklenecek."
-              />
-            ),
-          },
+          { path: 'raporlar', element: <ReportsPage /> },
+          { path: 'raporlar/zimmet-hareketleri', element: <ReportsPage /> },
           { path: 'denetim-gecmisi', element: <AuditLogPage /> },
           { path: '*', element: <NotFoundPage /> },
         ],

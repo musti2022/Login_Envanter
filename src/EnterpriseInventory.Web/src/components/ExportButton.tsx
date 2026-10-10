@@ -2,9 +2,8 @@ import FileDownloadIcon from '@mui/icons-material/FileDownload'
 import { Alert, AlertTitle, Button, CircularProgress, Snackbar } from '@mui/material'
 import { useMutation } from '@tanstack/react-query'
 import { useState } from 'react'
-import { ApiError } from '../api/http'
+import { ApiError, type DownloadedFile } from '../api/http'
 import { saveFile } from '../api/saveFile'
-import { exportAssets, type AssetListParams } from './assetsApi'
 
 interface Failure {
   title: string
@@ -12,16 +11,16 @@ interface Failure {
 }
 
 interface ExportButtonProps {
-  /** The list on screen: the file holds every page of it, with the same filters and order. */
-  params: AssetListParams
+  /** Asks the API for the file of what is on screen (every page of it, with the same filters and order). */
+  download: () => Promise<DownloadedFile>
   disabled?: boolean
 }
 
-/** "Excel'e aktar": downloads the inventory list as it is filtered and sorted on screen. */
-export function ExportButton({ params, disabled = false }: ExportButtonProps) {
+/** "Excel'e aktar": downloads a list or report as it is filtered on screen; a refused file is explained in Turkish. */
+export function ExportButton({ download: request, disabled = false }: ExportButtonProps) {
   const [failure, setFailure] = useState<Failure | null>(null)
   const download = useMutation({
-    mutationFn: () => exportAssets(params),
+    mutationFn: request,
     onMutate: () => setFailure(null),
     onSuccess: saveFile,
     onError: (error) => setFailure(failureOf(error)),

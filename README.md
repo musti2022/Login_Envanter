@@ -4,7 +4,7 @@
 üzerinden LDAPS ile yapılır ve yalnızca `Bim_Envanter` güvenlik grubunun üyeleri uygulamaya girebilir.
 Proje gereksinimleri ve 40 günlük plan: [`proje_talimatlari.md`](proje_talimatlari.md).
 
-> **Durum:** 33. gün — solution iskeleti, Türkçe arayüz kabuğu,
+> **Durum:** 34. gün — solution iskeleti, Türkçe arayüz kabuğu,
 > domain modeli, SQL Server şeması (EF Core migration, RowVersion, kısıtlar, soft delete sorgu filtresi, idempotent
 > yayın betiği, yedek ve geri dönüş planı, geliştirme seed'i), API altyapısı (health endpoint'leri, varsayılan olarak kapalı yetkilendirme, hata yanıtları,
 > güvenlik başlıkları, rate limiting), Active Directory LDAPS bağlantısı (sıkı TLS sertifika doğrulaması), giriş API'si
@@ -22,7 +22,9 @@ Proje gereksinimleri ve 40 günlük plan: [`proje_talimatlari.md`](proje_talimat
 > (aynı çalışana ve aynı demirbaşa yönelik zimmetler sıraya girer), denetim kayıtları API'si ve Denetim Geçmişi ekranı
 > (her değişikliğin eski ve yeni değerleri, kullanıcı, zaman ve işlem numarasıyla), ekrandaki filtre ve sıralamayla
 > bütün sayfaları Excel'e aktarma (Türkçe başlıklar, bilgi sayfası, satır sınırı), gösterge paneli raporları (şehir,
-> departman, tür ve marka dağılımı, İstanbul saatine göre aylık zimmet hareketleri; her rakam düz SQL ile karşılaştırılarak test edildi). AD entegrasyonu Samba test domain'i ile test
+> departman, tür ve marka dağılımı, İstanbul saatine göre aylık zimmet hareketleri; her rakam düz SQL ile karşılaştırılarak test edildi), Raporlar ekranı
+> (şehir, departman, lokasyon, marka, model, tür veya durum bazında envanter özeti; döneme göre zimmet hareketleri;
+> Türkçe filtreler ve Excel'e aktarma). AD entegrasyonu Samba test domain'i ile test
 > edildi; şirketin gerçek AD'si ile henüz denenmedi. Tanım yönetimi (ad değiştirme, pasifleştirme) henüz yok.
 
 ## Teknolojiler
@@ -63,7 +65,7 @@ lokasyon ve departman listeleri için [`docs/lookups-api.md`](docs/lookups-api.m
 için [`docs/assignments-api.md`](docs/assignments-api.md); canlı bildirim hub'ı için
 [`docs/realtime.md`](docs/realtime.md) (olaylar ve çoklu sunucu notları dahil); aynı anda yapılan değişikliklerde
 alınan önlemler ve yarış testleri için [`docs/concurrency.md`](docs/concurrency.md); denetim kayıtları ve Denetim
-Geçmişi ekranı için [`docs/audit.md`](docs/audit.md); Excel'e aktarma için [`docs/export.md`](docs/export.md); gösterge paneli raporları için
+Geçmişi ekranı için [`docs/audit.md`](docs/audit.md); Excel'e aktarma için [`docs/export.md`](docs/export.md); gösterge paneli raporları ve Raporlar ekranı için
 [`docs/reports.md`](docs/reports.md); gösterge paneli, envanter tablosu,
 filtreler, form ve detay ekranları için [`docs/inventory-ui.md`](docs/inventory-ui.md).
 

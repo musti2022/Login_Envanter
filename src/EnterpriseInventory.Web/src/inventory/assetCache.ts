@@ -1,6 +1,7 @@
 import type { QueryClient } from '@tanstack/react-query'
 import { auditLogsQueryKey } from '../audit/auditApi'
 import { dashboardQueryKey } from '../dashboard/dashboardApi'
+import { reportsQueryKey } from '../reports/reportsApi'
 import { assetQueryKey, assetsQueryKey, type AssetDetails } from './assetsApi'
 
 /**
@@ -14,5 +15,6 @@ export function assetSaved(queryClient: QueryClient, asset: AssetDetails) {
     predicate: (query) => query.queryKey[1] !== 'detail' || query.queryKey[2] !== asset.id,
   })
   void queryClient.invalidateQueries({ queryKey: dashboardQueryKey })
+  void queryClient.invalidateQueries({ queryKey: reportsQueryKey })
   void queryClient.invalidateQueries({ queryKey: auditLogsQueryKey })
 }

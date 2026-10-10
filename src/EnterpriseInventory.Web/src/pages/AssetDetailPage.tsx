@@ -22,6 +22,7 @@ import { parseAssetId } from '../inventory/assetId'
 import { AssetNotFound } from '../inventory/AssetNotFound'
 import { assetQueryKey, assetsQueryKey, fetchAsset, retryUnlessNotFound, type AssetDetails } from '../inventory/assetsApi'
 import { dashboardQueryKey } from '../dashboard/dashboardApi'
+import { reportsQueryKey } from '../reports/reportsApi'
 import { formatDateTime, statusLabels, typeLabels } from '../inventory/labels'
 import { MoveAssetDialog } from '../inventory/MoveAssetDialog'
 import { ReturnAssetDialog } from '../inventory/ReturnAssetDialog'
@@ -87,6 +88,7 @@ export function AssetDetailPage() {
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: assetsQueryKey })
     void queryClient.invalidateQueries({ queryKey: dashboardQueryKey })
+    void queryClient.invalidateQueries({ queryKey: reportsQueryKey })
     void queryClient.invalidateQueries({ queryKey: auditLogsQueryKey })
   }
   const saved = (asset: AssetDetails, notice: string) => {

@@ -1,6 +1,7 @@
 using System.Globalization;
 using EnterpriseInventory.Application.Dashboard;
 using EnterpriseInventory.Application.Exports;
+using EnterpriseInventory.Application.Reports;
 using EnterpriseInventory.Domain.Assets;
 using EnterpriseInventory.Infrastructure.Assets;
 using EnterpriseInventory.Infrastructure.Persistence;
@@ -81,7 +82,7 @@ internal sealed class DashboardStore(ApplicationDbContext db, TimeProvider timeP
         var months = Enumerable.Range(0, IDashboardStore.MovementMonths)
             .Select(i => new DateTime(localNow.Year, localNow.Month, 1).AddMonths(i - IDashboardStore.MovementMonths + 1))
             .ToList();
-        var from = LocalToUtc(months[0], zone);
+        var from = ReportingTime.ToMoment(months[0], zone);
 
         // Every assignment of the window, archived assets included: those movements happened.
         var assignments = db.AssetAssignments.IncludingArchived().AsNoTracking();
@@ -106,17 +107,6 @@ internal sealed class DashboardStore(ApplicationDbContext db, TimeProvider timeP
             var key = month.ToString("yyyy-MM", CultureInfo.InvariantCulture);
             return new MonthlyMovement(key, assignedByMonth.GetValueOrDefault(key), returnedByMonth.GetValueOrDefault(key));
         });
-    }
-
-    /// <summary>A local wall-clock time as a moment; a time a clock change skips is moved past the change.</summary>
-    private static DateTimeOffset LocalToUtc(DateTime local, TimeZoneInfo zone)
-    {
-        while (zone.IsInvalidTime(local))
-        {
-            local = local.AddMinutes(30);
-        }
-
-        return new DateTimeOffset(TimeZoneInfo.ConvertTimeToUtc(local, zone), TimeSpan.Zero);
     }
 
     private async Task<IReadOnlyList<RecentActivity>> RecentActivityAsync(CancellationToken cancellationToken)

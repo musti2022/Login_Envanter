@@ -178,7 +178,7 @@ interface TypedFilterProps {
 }
 
 /** A text filter. Typing waits a moment before filtering; Enter filters at once. */
-function TypedFilter({ label, value, maxLength, placeholder, disabledText, onApply }: TypedFilterProps) {
+export function TypedFilter({ label, value, maxLength, placeholder, disabledText, onApply }: TypedFilterProps) {
   const [text, setText] = useState(value)
   const [shown, setShown] = useState(value)
 

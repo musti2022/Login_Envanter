@@ -83,7 +83,7 @@ function DashboardContent({ statistics }: { statistics: DashboardStatistics }) {
             {statistics.byCity.items.length > 0 ? (
               <DistributionList
                 label="Şehirlere göre demirbaş sayısı"
-                rows={distributionRows(statistics.byCity, { other: 'şehir', filter: 'cityId', split: true })}
+                rows={distributionRows(statistics.byCity, { other: 'şehir', filter: 'cityId', report: 'city', split: true })}
               />
             ) : (
               <NoAssets />
@@ -95,7 +95,7 @@ function DashboardContent({ statistics }: { statistics: DashboardStatistics }) {
             {statistics.byDepartment.items.length > 0 ? (
               <DistributionList
                 label="Departmanlara göre demirbaş sayısı"
-                rows={distributionRows(statistics.byDepartment, { other: 'departman', filter: 'departmentId', split: true })}
+                rows={distributionRows(statistics.byDepartment, { other: 'departman', filter: 'departmentId', report: 'department', split: true })}
               />
             ) : (
               <NoAssets />
@@ -161,7 +161,7 @@ function DashboardContent({ statistics }: { statistics: DashboardStatistics }) {
             {statistics.byBrand.items.length > 0 ? (
               <DistributionList
                 label="Markalara göre demirbaş sayısı"
-                rows={distributionRows(statistics.byBrand, { other: 'marka', filter: 'brandId', split: false })}
+                rows={distributionRows(statistics.byBrand, { other: 'marka', filter: 'brandId', report: 'brand', split: false })}
               />
             ) : (
               <NoAssets />
@@ -178,12 +178,14 @@ interface RowOptions {
   other: string
   /** The inventory filter of a row. */
   filter: 'cityId' | 'departmentId' | 'brandId'
+  /** The report that lists every one of them, for the row of the rest. */
+  report: 'city' | 'department' | 'brand'
   /** Whether the bars show the assigned part. */
   split: boolean
 }
 
-/** One row per named city, department or brand, linked to the filtered inventory, and one for the rest. */
-function distributionRows(distribution: Distribution, { other, filter, split }: RowOptions): DistributionRow[] {
+/** One row per named city, department or brand, linked to the filtered inventory, and one for the rest, linked to the full report. */
+function distributionRows(distribution: Distribution, { other, filter, report, split }: RowOptions): DistributionRow[] {
   const rows: DistributionRow[] = distribution.items.map((item) => ({
     key: item.id,
     name: item.name,
@@ -197,6 +199,7 @@ function distributionRows(distribution: Distribution, { other, filter, split }: 
       name: `Diğer ${formatNumber(distribution.otherGroupCount)} ${other}`,
       count: distribution.otherCount,
       ...(split && { assignedCount: distribution.otherAssignedCount }),
+      to: report === 'city' ? '/raporlar' : `/raporlar?groupBy=${report}`,
     })
   }
   return rows

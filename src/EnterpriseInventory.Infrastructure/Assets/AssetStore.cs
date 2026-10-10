@@ -130,7 +130,8 @@ internal sealed partial class AssetStore(
         return Filter(source.AsNoTracking(), criteria);
     }
 
-    private static IQueryable<Asset> Filter(IQueryable<Asset> assets, AssetListCriteria criteria)
+    /// <summary>The inventory list's filters; the report screen's summary uses them too, so both count the same assets.</summary>
+    internal static IQueryable<Asset> Filter(IQueryable<Asset> assets, AssetListCriteria criteria)
     {
         // Contains becomes LIKE with its wildcards escaped, so % and _ are plain characters.
         foreach (var term in criteria.SearchTerms)
