@@ -203,17 +203,22 @@ Gerekenler: Visual Studio 2026 (.NET 10 için), **ASP.NET ve web geliştirme** i
 Node.js 22 veya üstü. Visual Studio ile açılması bu depoda denenmedi; çözüm, React projesinin derlenmesi ve
 `npm run dev` ile başlatılması komut satırında denendi.
 
-1. `EnterpriseInventory.slnx` dosyasını açın. Çözüm Gezgini'nde React arayüzü `EnterpriseInventory.Web` olarak görünür.
-2. `EnterpriseInventory.Api` → **Kullanıcı gizli dizilerini yönet** (Manage User Secrets): `ConnectionStrings:DefaultConnection`
+1. Depoyu kısa bir klasöre alın (ör. `git clone -b <dal> <depo adresi> C:\src\Login_Envanter`). Windows'un 260 karakterlik
+   yol sınırı yüzünden uzun bir klasörde (ör. Downloads altında iç içe açılmış ZIP) derleme `obj` altındaki dosyalar için
+   "yolun bir parçası bulunamadı" hatası verir. Derleme çıktıları ve `node_modules` içindeki en uzun yol depo klasöründen
+   sonra yaklaşık 155 karakterdir; depo klasörünün yolu 100 karakteri geçmemelidir. ZIP yerine `git clone`, güncellemeleri
+   **Git > Çek** ile almayı da sağlar.
+2. `EnterpriseInventory.slnx` dosyasını açın. Çözüm Gezgini'nde React arayüzü `EnterpriseInventory.Web` olarak görünür.
+3. `EnterpriseInventory.Api` → **Kullanıcı gizli dizilerini yönet** (Manage User Secrets): `ConnectionStrings:DefaultConnection`
    ve sahte dizin kullanıcıları ([ayrıntı](docs/active-directory.md#geliştirme-ortamı-sahte-dizin)). Veritabanını
    [EF Core komutlarıyla](#veritabanı-ef-core) hazırlayın.
-3. Node.js'in API'nin geliştirme sertifikasına güvenmesi için bir kez (Windows, sonra Visual Studio'yu yeniden açın):
+4. Node.js'in API'nin geliştirme sertifikasına güvenmesi için bir kez (Windows, sonra Visual Studio'yu yeniden açın):
    ```powershell
    dotnet dev-certs https --trust
    dotnet dev-certs https --export-path "$HOME\.aspnet\https\aspnet-dev-cert.pem" --format Pem
    setx NODE_EXTRA_CA_CERTS "$HOME\.aspnet\https\aspnet-dev-cert.pem"
    ```
-4. Araç çubuğundaki başlatma listesinden **API ve Web** profilini seçip başlatın. API `https` profiliyle
+5. Araç çubuğundaki başlatma listesinden **API ve Web** profilini seçip başlatın. API `https` profiliyle
    (`https://localhost:7261`), arayüz `npm run dev` ile (`http://localhost:5173`) açılır ve tarayıcı giriş sayfasına gider.
    İlk başlatmada `node_modules` yoksa `npm ci` kendiliğinden çalışır.
 
