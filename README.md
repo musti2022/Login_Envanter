@@ -4,7 +4,7 @@
 üzerinden LDAPS ile yapılır ve yalnızca `Bim_Envanter` güvenlik grubunun üyeleri uygulamaya girebilir.
 Proje gereksinimleri ve 40 günlük plan: [`proje_talimatlari.md`](proje_talimatlari.md).
 
-> **Durum:** 36. gün — solution iskeleti, Türkçe arayüz kabuğu,
+> **Durum:** 37. gün — solution iskeleti, Türkçe arayüz kabuğu,
 > domain modeli, SQL Server şeması (EF Core migration, RowVersion, kısıtlar, soft delete sorgu filtresi, idempotent
 > yayın betiği, yedek ve geri dönüş planı, geliştirme seed'i), API altyapısı (health endpoint'leri, varsayılan olarak kapalı yetkilendirme, hata yanıtları,
 > güvenlik başlıkları, rate limiting), Active Directory LDAPS bağlantısı (sıkı TLS sertifika doğrulaması), giriş API'si
@@ -27,7 +27,8 @@ Proje gereksinimleri ve 40 günlük plan: [`proje_talimatlari.md`](proje_talimat
 > Türkçe filtreler ve Excel'e aktarma), 20.000 demirbaşlık temsili veride ölçülüp iyileştirilmiş sorgular (arama ve
 > sıralama, raporlama indeksleri, satır sayısıyla artmayan sabit sorgu sayısı testi), güvenlik testleri (yönlendirme
 > tablosundaki her uç nokta için oturum, rol ve CSRF; SQL/LIKE enjeksiyonu, toplu atama, HTTPS/HSTS, depoda sır taraması;
-> bağımlılık taraması) ve güvenlik kontrol listesi. AD entegrasyonu Samba test domain'i ile test
+> bağımlılık taraması), güvenlik kontrol listesi ve gerçek sonuçlarla test raporu (kısıt, eşzamanlılık, geri alma ve
+> audit testleri tek tek). AD entegrasyonu Samba test domain'i ile test
 > edildi; şirketin gerçek AD'si ile henüz denenmedi. Tanım yönetimi (ad değiştirme, pasifleştirme) henüz yok.
 
 ## Teknolojiler
@@ -72,7 +73,8 @@ Geçmişi ekranı için [`docs/audit.md`](docs/audit.md); Excel'e aktarma için 
 [`docs/reports.md`](docs/reports.md); gösterge paneli, envanter tablosu,
 filtreler, form ve detay ekranları için [`docs/inventory-ui.md`](docs/inventory-ui.md); temsili yükte sorgu ölçümleri,
 yapılan iyileştirmeler ve N+1 testi için [`docs/performance.md`](docs/performance.md); her güvenlik kontrolü, kanıtı ve
-yayın öncesi ortamda doğrulanacaklar için [`docs/security-checklist.md`](docs/security-checklist.md).
+yayın öncesi ortamda doğrulanacaklar için [`docs/security-checklist.md`](docs/security-checklist.md); son test
+çalıştırmasının sonuçları ve denenmeyenler için [`docs/test-report.md`](docs/test-report.md).
 
 ## Gereksinimler
 
@@ -99,6 +101,8 @@ npm run test:e2e   # tarayıcı testleri; hazırlık: src/EnterpriseInventory.We
 
 SQL Server testleri `EI_TEST_SQL_CONNECTION` tanımlı değilse atlanır (skipped). Bir test sunucusunda geçici bir
 veritabanı oluşturup silerler; ayrıntı için [`docs/database.md`](docs/database.md#testler).
+Son çalıştırmanın sonuçları, denenmeyenler ve raporun sonuç dosyalarından nasıl üretildiği:
+[`docs/test-report.md`](docs/test-report.md).
 
 Active Directory testleri `EI_TEST_AD_SERVER` tanımlı değilse atlanır. Gerçek bir LDAPS sunucusuyla denemek için
 Samba ile geçici bir test domain'i kurulabilir: [`scripts/test-ad`](scripts/test-ad/README.md). Ayrıntı:
