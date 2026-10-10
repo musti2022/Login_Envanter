@@ -16,8 +16,9 @@ namespace EnterpriseInventory.IntegrationTests.Assets;
 /// <summary>
 /// Assignments and returns under concurrent requests and failures (days 22, 23 and 30), on a database of their own:
 /// <list type="bullet">
-/// <item>Requests that all read the same version of the asset and pass every check are held until all of them are
-/// about to save, then released together: exactly one assignment (or return) is committed.</item>
+/// <item>Requests for the same asset are held until all of them are about to lock it, then released together: the
+/// lock lets one through at a time, the others then find the asset changed, and exactly one assignment (or return)
+/// is committed.</item>
 /// <item>An active assignment written behind the API's back between its read and its save: the filtered unique index
 /// refuses the API's assignment.</item>
 /// <item>The audit record cannot be written: the assignment, return or move is rolled back with it.</item>
@@ -35,6 +36,7 @@ public sealed class AssignmentConsistencyTests(SqlServerDatabaseFixture fixture)
 
     private readonly FakeEmployees _people = new(Racers);
     private readonly SaveGate _gate = new();
+    private readonly AssetLockGate _lockGate = new();
     private string _connectionString = string.Empty;
     private TestApiFactory? _api;
     private InventoryReferences _refs = null!;
@@ -58,7 +60,7 @@ public sealed class AssignmentConsistencyTests(SqlServerDatabaseFixture fixture)
         _api = new TestApiFactory(
             _connectionString,
             settings: _people.Settings(),
-            configureServices: services => services.ConfigureDbContext<ApplicationDbContext>(options => options.AddInterceptors(_gate)));
+            configureServices: services => services.ConfigureDbContext<ApplicationDbContext>(options => options.AddInterceptors(_gate, _lockGate)));
     }
 
     public Task DisposeAsync() => Task.CompletedTask;
@@ -76,8 +78,8 @@ public sealed class AssignmentConsistencyTests(SqlServerDatabaseFixture fixture)
             employees.Add(await client.EmployeeGuidAsync(name));
         }
 
-        // Every request has read the asset at the same version and passed its checks before any of them saves.
-        _gate.HoldUntil(Racers, context => context.ChangeTracker.Entries<AssetAssignment>().Any(e => e.State == EntityState.Added));
+        // Every request is about to lock the asset at the same moment, each for a different person.
+        _lockGate.HoldUntil(Racers);
         var responses = await Task.WhenAll(employees.Select(async employee =>
         {
             using var racer = _api.CreateSignedInClient(User);
@@ -85,7 +87,7 @@ public sealed class AssignmentConsistencyTests(SqlServerDatabaseFixture fixture)
             return (response.StatusCode, Body: await response.Content.ReadAsStringAsync());
         }));
 
-        Assert.True(_gate.Released, "The requests never all reached their save together.");
+        Assert.True(_lockGate.Released, "The requests never all reached the asset together.");
         Assert.Single(responses, r => r.StatusCode == HttpStatusCode.Created);
         Assert.All(responses.Where(r => r.StatusCode != HttpStatusCode.Created), r =>
         {
@@ -107,7 +109,7 @@ public sealed class AssignmentConsistencyTests(SqlServerDatabaseFixture fixture)
         using var client = _api!.CreateSignedInClient(User);
         var assigned = await client.AssignAsync(await client.CreateAssetAsync(_refs.NewAssetBody()), await client.EmployeeGuidAsync(_people.First));
 
-        _gate.HoldUntil(Racers, context => context.ChangeTracker.Entries<AssetAssignment>().Any(e => e.State == EntityState.Modified));
+        _lockGate.HoldUntil(Racers);
         var statuses = await Task.WhenAll(Enumerable.Range(0, Racers).Select(async _ =>
         {
             using var racer = _api.CreateSignedInClient(User);
@@ -115,7 +117,7 @@ public sealed class AssignmentConsistencyTests(SqlServerDatabaseFixture fixture)
             return response.StatusCode;
         }));
 
-        Assert.True(_gate.Released);
+        Assert.True(_lockGate.Released, "The requests never all reached the asset together.");
         Assert.Single(statuses, s => s == HttpStatusCode.OK);
         Assert.All(statuses.Where(s => s != HttpStatusCode.OK), s => Assert.Equal(HttpStatusCode.Conflict, s));
         await using var db = fixture.CreateContextFor(_connectionString);
@@ -289,6 +291,64 @@ internal sealed class SaveGate : SaveChangesInterceptor
         if (before is not null)
         {
             await before();
+        }
+
+        if (wait is not null)
+        {
+            try
+            {
+                await wait.WaitAsync(TimeSpan.FromSeconds(15), cancellationToken);
+            }
+            catch (TimeoutException)
+            {
+                // Released stays false; the test reports that the race never happened.
+            }
+        }
+
+        return result;
+    }
+}
+
+/// <summary>
+/// Holds the API's statements that lock an asset's row (see AssetAssignmentStore) until the given number have
+/// arrived, then lets them run together, so SQL Server decides the order (or releases them after 15 seconds, leaving
+/// <see cref="Released"/> false). Other statements pass straight through.
+/// </summary>
+internal sealed class AssetLockGate : DbCommandInterceptor
+{
+    private readonly Lock _lock = new();
+    private TaskCompletionSource? _release;
+    private int _expected;
+    private int _arrived;
+
+    public bool Released { get; private set; }
+
+    public void HoldUntil(int parties)
+    {
+        lock (_lock)
+        {
+            (_expected, _arrived, Released) = (parties, 0, false);
+            _release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+    }
+
+    public override async ValueTask<InterceptionResult<int>> NonQueryExecutingAsync(
+        System.Data.Common.DbCommand command, CommandEventData eventData, InterceptionResult<int> result, CancellationToken cancellationToken = default)
+    {
+        Task? wait = null;
+        lock (_lock)
+        {
+            if (_release is { } release && command.CommandText.Contains("FROM [Assets] WITH (UPDLOCK, ROWLOCK)", StringComparison.Ordinal))
+            {
+                if (++_arrived == _expected)
+                {
+                    Released = true;
+                    _release = null;
+                    release.TrySetResult();
+                }
+
+                wait = release.Task;
+            }
         }
 
         if (wait is not null)

@@ -53,8 +53,12 @@ Uygulamaya giren yöneticiler `AdminUsers`, zimmet alan çalışanlar `Employees
 
 ### Bir demirbaşta tek aktif zimmet
 
-Aynı demirbaş için aynı anda gelen istekleri iki ayrı koruma durdurur:
+Aynı demirbaş için aynı anda gelen istekleri üç ayrı koruma durdurur:
 
+- **Demirbaş satırı kilidi (30. gün):** zimmet ve iade, demirbaşı okumadan önce satırını transaction sonuna kadar kilitler
+  (`UPDLOCK`). Aynı demirbaş için gelen ikinci istek bu noktada bekler, ilki commit edince demirbaşı yeni sürümüyle okur
+  ve `409 concurrency_conflict` alır. Kilit olmadan, demirbaş ile zimmetleri ayrı sorgularla okunduğu için arada commit
+  edilen bir iade "zimmetli ama açık zimmeti yok" görünen bir demirbaş bırakıyor ve istek `500` alıyordu.
 - **RowVersion:** zimmet demirbaş satırını da günceller (`Status` ve `UpdatedAt`), `UPDATE … WHERE RowVersion = <istemcinin
   sürümü>` ile. İlk commit sürümü değiştirir; aynı sürümü okuyan diğer istekler `409 concurrency_conflict` alır.
 - **Filtreli benzersiz indeks:** `UX_AssetAssignments_AssetId_Active` (`AssetId`, `WHERE [ReturnedAt] IS NULL`). Demirbaş
@@ -62,8 +66,13 @@ Aynı demirbaş için aynı anda gelen istekleri iki ayrı koruma durdurur:
   SQL Server ikinci aktif zimmeti reddeder; API bunu `409 asset_already_assigned` olarak döndürür ve transaction'daki her
   şeyi (çalışan kaydı dahil) geri alır.
 
-Aynı anda ilk kez zimmet alan aynı çalışan için iki istek gelirse `IX_Employees_ObjectGuid` birini reddeder; o istek
-bir kez baştan çalışır (kayıt artık vardır ve güncellenir).
+Aynı çalışana farklı demirbaşlar aynı anda zimmetlenirse istekler çalışan kaydında sıraya girer (30. gün): her zimmet
+çalışanın `ObjectGuid`'ine bağlı bir uygulama kilidi (`sp_getapplock`, transaction sonuna kadar) alır, sonraki istek
+kaydı güncel haliyle okur. Kilit olmadan ilk kez zimmet alan çalışanın kaydını birden fazla istek aynı anda eklemeye
+çalışıyor (`IX_Employees_ObjectGuid` ihlali, `500`) veya biri kaydı diğerinin altında güncelliyordu (çalışan kaydının
+`RowVersion`'ı; demirbaş değişmediği halde "başka kullanıcı değiştirdi" diyen `409`). Farklı çalışanlara yapılan
+zimmetler birbirini beklemez. Kilitler hep aynı sırayla alınır (önce çalışan, sonra demirbaş); bu yüzden kilitlenme
+(deadlock) olmaz. Kilitsiz bir yoldan aynı anda eklenen çalışan kaydına karşı istek bir kez baştan çalışır.
 
 ## İade alma: `POST /api/assets/{id}/returns` (23. gün)
 
@@ -117,12 +126,13 @@ geçici bir hatada işlemin tamamı (okuma, kontroller, yazma, commit) yeniden �
 | Kabul ölçütü | Testler | Sonuç |
 | --- | --- | --- |
 | **21. gün** Yetkisiz AD çalışanı zimmet için seçilebilir | `SambaEmployeeDirectoryTests`, `EmployeeSearchApiTests` (bkz. [`active-directory.md`](active-directory.md)); `AssignmentWithActiveDirectoryTests`: Samba AD'de `Bim_Envanter` üyesi olmayan `mehmet.user` bulunur ve demirbaş ona zimmetlenir, `Employees`'e e-postasıyla eklenir, `AdminUsers`'a eklenmez; pasif `disabled.user` GUID'iyle gönderilince `409 employee_inactive` | Geçti |
-| **22. gün** Eşzamanlı iki istekte yalnızca bir aktif zimmet | `AssignmentConsistencyTests`: aynı sürümü okuyup bütün kontrollerden geçen 8 istek kaydetmeden hemen önce bekletilip birlikte bırakılır: tam bir `201`, yedi `409`, veritabanında tek aktif zimmet, tek `Assigned` audit. API okuduktan sonra demirbaş satırına dokunmadan SQL ile aktif zimmet yazılınca filtreli benzersiz indeks API'nin zimmetini reddeder (`409 asset_already_assigned`), API'nin eklediği çalışan kaydı da geri alınır. Audit yazılamayınca zimmet ve çalışan kaydı birlikte geri alınır (`500`) | Geçti |
+| **22. gün** Eşzamanlı iki istekte yalnızca bir aktif zimmet | `AssignmentConsistencyTests`: 8 istek demirbaşı kilitlemeden hemen önce bekletilip birlikte bırakılır (30. günden önce kaydetmeden hemen önce bekletiliyordu): tam bir `201`, yedi `409`, veritabanında tek aktif zimmet, tek `Assigned` audit. API okuduktan sonra demirbaş satırına dokunmadan SQL ile aktif zimmet yazılınca filtreli benzersiz indeks API'nin zimmetini reddeder (`409 asset_already_assigned`), API'nin eklediği çalışan kaydı da geri alınır. Audit yazılamayınca zimmet ve çalışan kaydı birlikte geri alınır (`500`) | Geçti |
 | **22. gün** Zimmet kuralları | `AssetAssignmentTests`: sahte dizindeki grup dışı çalışana zimmet (`201`, `Location`, yeni `rowVersion`, `activeAssignment`, `Employees` kaydı, `Assigned` audit ve değerleri, listede zimmetli kişi); her alan için Türkçe hata ve hiçbir şeyin yazılmaması; dizinde olmayan çalışan; pasif hesap; eski sürüm `409`; zimmetliye ikinci zimmet; arızalı/hurda; arşivlenmiş ve olmayan demirbaş; erişilemeyen AD `503`; çalışan kaydının AD'den yenilenmesi | Geçti |
 | **23. gün** İade ve geçmiş doğru kaydedilir | `AssetAssignmentTests`: iade `Available`, zimmet geçmişinde iki dönem en yeni önce, iade eden ve zamanı, ikinci çalışana yeniden zimmet, audit sırası (`Assigned`, `Returned`, `Assigned`, `Created`), arşivlenmiş demirbaşın zimmet geçmişi okunur, zimmetsiz demirbaş iadesi `409`, eski sürümle iade `409`. `AssignmentConsistencyTests`: aynı anda 8 iadeden biri başarılı; audit yazılamayınca iade geri alınır | Geçti |
 | Yetki | `AssetAuthorizationTests`: yeni dört uç nokta oturumsuz `401`, rolsüz `403` | Geçti |
 | Birim | `AssetAssignmentServiceTests`: AD'den yeniden okunan çalışan ve kırpılmış metinler; geçersiz istekte AD'ye sorulmaz; dizinde olmayan, pasif ve erişilemeyen dizin | Geçti |
 
 Bozma denemesi: indeks ihlalinin `409`'a çevrilmesi kaldırılınca "arkadan yazılan aktif zimmet" testi kırıldı
-(`500`). Eşzamanlı 8 istekte kaybedenler her çalıştırmada RowVersion korumasına takıldı; indeks koruması bu yüzden
-ayrı testle denetlenir.
+(`500`). Eşzamanlı 8 istekte kaybedenler her çalıştırmada RowVersion korumasına (30. günden beri demirbaş kilidinden
+sonra okunan yeni sürüme) takıldı; indeks koruması bu yüzden ayrı testle denetlenir. 30. gün yarış testleri ve kilitlerin
+bozma denemeleri: [`concurrency.md`](concurrency.md).

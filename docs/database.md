@@ -19,6 +19,8 @@ EF Core 10.0.12 Code First, SQL Server. Kod: `src/EnterpriseInventory.Infrastruc
   arasında başka bir `DbContext`'in yaptığı değişiklik de ezilmez. Zimmetlerin kendi `RowVersion`'ı yoktur, demirbaşın parçasıdır:
   zimmet eklendiğinde veya değiştiğinde `ApplicationDbContext` demirbaş satırını da günceller. Böylece aynı
   demirbaşa aynı anda yapılan zimmet, iade ve devir (iade + yeni zimmet) işlemlerinden ikincisi çakışma alır.
+  Zimmet ve iade ayrıca demirbaş satırını okumadan önce kilitler (`UPDLOCK`), zimmet önce çalışana bağlı bir uygulama
+  kilidi alır (`sp_getapplock`); ayrıntı: [`assignments-api.md`](assignments-api.md), [`concurrency.md`](concurrency.md).
   `AdminUsers` yalnızca giriş bilgisini tutar, orada son yazan kazanır; `AuditLogs` değiştirilmez.
 - **Audit alanları:** `CreatedAt/By`, `UpdatedAt/By` kayıt sırasında `AuditableEntityInterceptor` tarafından
   oturum açmış kullanıcıyla doldurulur. Saatler UTC'dir. Oturum açmış kullanıcı yoksa audit alanı olmayan
