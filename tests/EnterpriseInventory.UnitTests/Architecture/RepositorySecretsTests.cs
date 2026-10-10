@@ -33,7 +33,8 @@ public sealed partial class RepositorySecretsTests
     [Fact]
     public void Configuration_deployment_files_and_documents_hold_no_password()
     {
-        // "Password=<placeholder>" is how documents show a connection string; anything else is a value.
+        // "Password=<placeholder>" is how documents show a connection string, and "password = $credential..." in a
+        // script reads a variable; anything else is a value.
         var found = TextFiles()
             .Where(file => ConfigurationFile().IsMatch(file.Path))
             .SelectMany(file => PasswordValue().Matches(file.Text).Select(match => $"{file.Path}: {match.Value}"));
@@ -97,7 +98,7 @@ public sealed partial class RepositorySecretsTests
     [GeneratedRegex(@"(\.(json|config|xml|ps1|psm1|sh|sql|md|yml|yaml|ini|txt|example|env)$|(^|/)\.env)", RegexOptions.IgnoreCase)]
     private static partial Regex ConfigurationFile();
 
-    [GeneratedRegex(@"\b(password|pwd)\s*=\s*(?!<)[^;""'\s<>`]+", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"\b(password|pwd)\s*=\s*(?![<$])[^;""'\s<>`]+", RegexOptions.IgnoreCase)]
     private static partial Regex PasswordValue();
 
     [GeneratedRegex(

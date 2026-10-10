@@ -1,4 +1,4 @@
-# Güvenlik kontrol listesi (36. gün)
+# Güvenlik kontrol listesi (36. gün, 38. günde güncellendi)
 
 Her kontrolün nasıl sağlandığı ve onu kanıtlayan test. **Durum** sütunu:
 
@@ -11,7 +11,7 @@ Her kontrolün nasıl sağlandığı ve onu kanıtlayan test. **Durum** sütunu:
 
 | Kontrol | Nasıl | Kanıt | Durum |
 | --- | --- | --- | --- |
-| Varsayılan olarak her uç nokta kapalı | Fallback politikası `Administrator` rolü ister; yalnızca health live/ready, CSRF token, giriş ve React uygulamasının sayfası (`index.html`, veri içermez) anonimdir | `EndpointAccessTests.Only_the_health_probes_csrf_token_sign_in_and_the_app_page_are_marked_anonymous`, `WebAppHostingTests` | Test edildi |
+| Varsayılan olarak her uç nokta kapalı | Fallback politikası `Administrator` rolü ister; yalnızca health live/ready, CSRF token ve giriş anonimdir. React derlemesinin dosyaları (sayfa adreslerinde `index.html`) uç nokta değildir, yetkilendirmeden önce statik dosya olarak sunulur ve veri içermez; `/api` ve `/hubs` hiçbir zaman sayfaya düşmez | `EndpointAccessTests.Only_the_health_probes_csrf_token_and_sign_in_are_marked_anonymous`, `WebAppHostingTests` | Test edildi |
 | Ziyaretçi hiçbir uç noktaya erişemez | Yönlendirme tablosundaki **her** uç nokta ve metot (hub dahil) anonim istekle `401` | `EndpointAccessTests.A_visitor_is_refused_everywhere_but_the_health_probes_and_sign_in` | Test edildi |
 | Rolü olmayan kullanıcı erişemez | Aynı tablo, `Administrator` rolü olmayan oturumla `403` | `EndpointAccessTests.A_signed_in_user_without_the_administrator_role_is_refused_everywhere_but_the_anonymous_endpoints` | Test edildi |
 | Yeni eklenen uç nokta unutulmaz | Testler uç nokta listesini elle değil `EndpointDataSource`'tan okur; liste boş ya da eksikse koruma testi kırılır | `EndpointAccessTests.The_routing_table_holds_the_api_and_the_hub`; bilinçli hata (`AllowAnonymous` eklenmiş gösterge paneli) üç testçe yakalandı | Test edildi |
@@ -27,7 +27,7 @@ Her kontrolün nasıl sağlandığı ve onu kanıtlayan test. **Durum** sütunu:
 
 | Kontrol | Nasıl | Kanıt | Durum |
 | --- | --- | --- | --- |
-| Durum değiştiren her istek CSRF token ister | Global ara katman; `GET`/`HEAD`/`OPTIONS` dışında token yoksa `400 csrf_invalid` | `EndpointAccessTests.Every_state_changing_endpoint_refuses_an_administrator_without_a_csrf_token` (yönlendirme tablosundaki her yazma uç noktası), `Every_state_changing_request_needs_the_signed_in_users_csrf_token` (başka kullanıcının ve girişten önceki token'ı da reddedilir) | Test edildi |
+| Durum değiştiren her istek CSRF token ister | Global ara katman; `GET`/`HEAD`/`OPTIONS` dışında token yoksa `400 csrf_invalid`. HTTP/2'de WebSocket el sıkışması (`CONNECT`, RFC 8441) HTTP/1.1'deki `GET` gibi geçer; başka `CONNECT` token ister | `EndpointAccessTests.Every_state_changing_endpoint_refuses_an_administrator_without_a_csrf_token` (yönlendirme tablosundaki her yazma uç noktası), `Every_state_changing_request_needs_the_signed_in_users_csrf_token` (başka kullanıcının ve girişten önceki token'ı da reddedilir), `Http2WebSocketTests` (gerçek Kestrel, HTTP/2) | Test edildi |
 | Oturum sunucu tarafında | Çerez yalnızca anahtar taşır; veritabanında anahtarın özeti; çıkışta oturum sunucuda biter | `Only_a_hash_of_the_session_key_is_stored`, `Signing_out_ends_the_session_on_the_server_so_the_old_cookie_is_worthless`, `A_valid_cookie_without_a_server_side_session_is_refused` | Test edildi |
 | Güvenli çerez | `Secure`, `HttpOnly`, `SameSite=Strict`, host'a bağlı (`__Host-`) | `A_member_gets_a_secure_session_cookie_that_grants_access`, `The_csrf_cookie_is_a_host_only_secure_http_only_cookie` | Test edildi |
 | Boşta ve mutlak süre | 20 dakika boşta, 8 saat mutlak (ayardan) | `A_session_ends_after_twenty_idle_minutes_and_activity_keeps_it_alive`, `A_session_ends_eight_hours_after_sign_in_however_active` | Test edildi |
@@ -51,7 +51,7 @@ Her kontrolün nasıl sağlandığı ve onu kanıtlayan test. **Durum** sütunu:
 | --- | --- | --- | --- |
 | AD yalnızca LDAPS | Düz LDAP ayarı uygulamayı durdurur; sertifika zinciri, ad ve süre sıkı doğrulanır | `Plain_ldap_stops_the_application`, `LdapsCertificateValidatorTests`, `SambaLdapsTests` | Samba ile test edildi |
 | Doğrulamayı kapatan ayar yok | Test dışındaki dosyalarda (bu doküman dahil) SQL bağlantısında sunucu sertifikasına körü körüne güvenen ya da şifrelemeyi kapatan, Node veya Vite proxy'sinde sertifika doğrulamasını kapatan ayar yok; desenler testte | `RepositorySecretsTests.Nothing_outside_the_tests_switches_off_certificate_validation` | Test edildi |
-| HTTPS zorunlu | HTTP isteği HTTPS'e yönlenir; Development dışında HSTS (geliştirici makinesi HTTPS'e kilitlenmez) | `TransportSecurityTests` | Test edildi; IIS binding ortamda doğrulanacak |
+| HTTPS zorunlu | HTTP isteği HTTPS'e yönlenir; Development dışında HSTS (geliştirici makinesi HTTPS'e kilitlenmez) | `TransportSecurityTests`; 38. gün: yayın klasörü Production'da Kestrel ile `https://envanter.test.local` adresinde, [`Test-Deployment.ps1`](../deploy/iis/Test-Deployment.ps1) 0 HATA ([IIS yayını](../deploy/iis/README.md#38-günde-denenenler)) | Test edildi; IIS binding ortamda doğrulanacak |
 
 ## Girdi ve enjeksiyon
 
@@ -63,7 +63,7 @@ Her kontrolün nasıl sağlandığı ve onu kanıtlayan test. **Durum** sütunu:
 | Toplu atama (mass assignment) | İstek tipleri yalnızca düzenlenebilir alanları taşır; bilinmeyen JSON alanları yok sayılır | `InputSecurityTests.A_new_asset_ignores_fields_the_server_sets` (`id`, `isDeleted`, `createdBy`, `createdAt`, `rowVersion`, zimmet), `An_update_cannot_archive_reassign_or_rewrite_who_created_the_asset`, `A_new_asset_cannot_start_assigned` | Test edildi |
 | Büyük gövde | Giriş isteği gövdesi sınırlı; okunamayan gövde `400` | `Oversized_bodies_are_refused`, `A_request_body_that_cannot_be_read_is_400_in_every_environment` | Test edildi |
 | Excel formül enjeksiyonu | Hücreler metin olarak yazılır, `=`, `+`, `-`, `@` ile başlayan metin formül olmaz | `Text_that_looks_like_a_formula_is_written_as_text`, `Text_that_looks_like_a_formula_stays_text` | Test edildi; Microsoft Excel'de açılarak denenmedi |
-| XSS | React metni kaçışlar; `dangerouslySetInnerHTML` kullanılmaz; API yanıtlarında `default-src 'none'` CSP | Kod taraması (36. gün: kullanım yok), `Api_responses_carry_security_headers_and_are_never_cached` | Test edildi |
+| XSS | React metni kaçışlar; `dangerouslySetInnerHTML` kullanılmaz; API yanıtlarında `default-src 'none'` CSP; sayfalarda `script-src 'self'` (satır içi betik ve `eval` yok) | Kod taraması (36. gün: kullanım yok), `Api_responses_carry_security_headers_and_are_never_cached`, `WebAppHostingTests`; 38. gün: Production yayınında Chromium'da CSP ihlali yok | Test edildi |
 | Açık yönlendirme | Girişten sonra dönülecek sayfa URL'den değil uygulama içi yönlendirme durumundan gelir | `LoginPage.tsx` | Kod incelemesi |
 
 ## Veri bütünlüğü ve denetim
@@ -80,7 +80,7 @@ Her kontrolün nasıl sağlandığı ve onu kanıtlayan test. **Durum** sütunu:
 | --- | --- | --- | --- |
 | Hata ayrıntısı sızmaz | `500` yanıtında istisna mesajı ve yığın yok; Türkçe başlık ve correlation ID | `Unhandled_exceptions_return_500_without_exception_details`, `Errors_have_a_turkish_title_and_the_correlation_id_of_the_response` | Test edildi |
 | Bilinmeyen adres bir şey söylemez | Oturumsuz istek önce `401` alır | `Unknown_routes_require_sign_in_before_revealing_anything` | Test edildi |
-| Güvenlik başlıkları | `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, COOP, `Permissions-Policy`; API'de CSP ve `no-store` | `Api_responses_carry_security_headers_and_are_never_cached` | Test edildi |
+| Güvenlik başlıkları | `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, COOP, `Permissions-Policy`; API'de CSP ve `no-store`; sayfalarda uygulamanın CSP'si, `index.html` `no-cache`, adı içeriğiyle değişen dosyalar uzun süre önbellekte; IIS `Server` ve `X-Powered-By` göndermez | `Api_responses_carry_security_headers_and_are_never_cached`, `WebAppHostingTests`, `WebConfigTests` | Test edildi |
 | CORS yok | Başka origin'e izin verilmez | `Cross_origin_requests_get_no_cors_permission` | Test edildi |
 
 ## Veritabanı yetkileri ve ortam
@@ -108,7 +108,9 @@ Bunlar bu depoda test edilemedi; yapılmadan "tamam" denmez:
 - [ ] Şirketin AD'si ile LDAPS giriş, grup SID kontrolü, devre dışı/süresi dolmuş hesap ve çalışan araması
   (Samba'daki testlerin aynısı, [`active-directory.md`](active-directory.md)).
 - [ ] Şirketin SQL Server'ında runtime ve migration hesaplarının ayrı olduğu, runtime hesabının şema değiştiremediği.
-- [ ] IIS'te HTTPS binding, geçerli sertifika, HSTS ve HTTP'den yönlendirme.
-- [ ] Data Protection anahtar klasörünün yalnızca app pool kimliğine açık olduğu, log klasörü izinleri.
+- [ ] IIS'te HTTPS binding, geçerli sertifika, HSTS ve HTTP'den yönlendirme: sunucuda
+  [`Test-ServerPrerequisites.ps1`](../deploy/iis/Test-ServerPrerequisites.ps1) ve
+  [`Test-Deployment.ps1`](../deploy/iis/Test-Deployment.ps1) 0 HATA vermeli.
+- [ ] Data Protection anahtar klasörünün yalnızca app pool kimliğine açık olduğu (DPAPI ile şifreli), log klasörü izinleri.
 - [ ] Excel dışa aktarımlarının Microsoft Excel'de açıldığı ve formül çalıştırmadığı.
 - [ ] Şirket güvenlik ekibinin sızma testi (bu liste onun yerini tutmaz).

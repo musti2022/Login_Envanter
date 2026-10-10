@@ -2,9 +2,9 @@ namespace EnterpriseInventory.Api.Http;
 
 /// <summary>
 /// Adds browser security headers to every response. API responses (<c>/api</c>, <c>/hubs</c>) also get a
-/// Content-Security-Policy that allows nothing and are never cached, since they may contain inventory data.
+/// Content-Security-Policy that allows nothing and are never cached, since they may contain inventory data. The
+/// React app's pages and files get the app's policy (<see cref="WebAppHosting.ContentSecurityPolicy"/>).
 /// </summary>
-/// <remarks>The React pages get their own Content-Security-Policy when the API starts serving them.</remarks>
 internal sealed class SecurityHeadersMiddleware(RequestDelegate next)
 {
     public Task InvokeAsync(HttpContext context)
@@ -22,6 +22,10 @@ internal sealed class SecurityHeadersMiddleware(RequestDelegate next)
             {
                 headers.ContentSecurityPolicy = "default-src 'none'; frame-ancestors 'none'";
                 headers.CacheControl = "no-store";
+            }
+            else
+            {
+                headers.ContentSecurityPolicy = WebAppHosting.ContentSecurityPolicy;
             }
 
             return Task.CompletedTask;

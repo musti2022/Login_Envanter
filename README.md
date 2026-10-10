@@ -4,7 +4,7 @@
 üzerinden LDAPS ile yapılır ve yalnızca `Bim_Envanter` güvenlik grubunun üyeleri uygulamaya girebilir.
 Proje gereksinimleri ve 40 günlük plan: [`proje_talimatlari.md`](proje_talimatlari.md).
 
-> **Durum:** 37. gün — solution iskeleti, Türkçe arayüz kabuğu,
+> **Durum:** 38. gün — solution iskeleti, Türkçe arayüz kabuğu,
 > domain modeli, SQL Server şeması (EF Core migration, RowVersion, kısıtlar, soft delete sorgu filtresi, idempotent
 > yayın betiği, yedek ve geri dönüş planı, geliştirme seed'i), API altyapısı (health endpoint'leri, varsayılan olarak kapalı yetkilendirme, hata yanıtları,
 > güvenlik başlıkları, rate limiting), Active Directory LDAPS bağlantısı (sıkı TLS sertifika doğrulaması), giriş API'si
@@ -28,7 +28,9 @@ Proje gereksinimleri ve 40 günlük plan: [`proje_talimatlari.md`](proje_talimat
 > sıralama, raporlama indeksleri, satır sayısıyla artmayan sabit sorgu sayısı testi), güvenlik testleri (yönlendirme
 > tablosundaki her uç nokta için oturum, rol ve CSRF; SQL/LIKE enjeksiyonu, toplu atama, HTTPS/HSTS, depoda sır taraması;
 > bağımlılık taraması), güvenlik kontrol listesi ve gerçek sonuçlarla test raporu (kısıt, eşzamanlılık, geri alma ve
-> audit testleri tek tek). AD entegrasyonu Samba test domain'i ile test
+> audit testleri tek tek), IIS yayın hazırlığı (React ve API'nin aynı adresten sunulması, sayfa CSP'si, `web.config`,
+> yayın klasörü, sunucu ön kontrolü, site kurulumu ve duman testi betikleri; yayın klasörü Production'da HTTPS ile
+> denendi, IIS'in kendisi denenmedi: [`deploy/iis/README.md`](deploy/iis/README.md)). AD entegrasyonu Samba test domain'i ile test
 > edildi; şirketin gerçek AD'si ile henüz denenmedi. Tanım yönetimi (ad değiştirme, pasifleştirme) henüz yok.
 
 ## Teknolojiler
@@ -222,8 +224,9 @@ Değerler şu yollarla verilir:
   ```bash
   dotnet user-secrets set "ConnectionStrings:DefaultConnection" "<değer>" --project src/EnterpriseInventory.Api
   ```
-- **Üretim (IIS):** Ortam değişkenleri, ör. `ConnectionStrings__DefaultConnection`,
-  `ActiveDirectory__ServiceAccountPassword`. `appsettings.Production.json` gizli değer içermez.
+- **Üretim (IIS):** Uygulama havuzunun ortam değişkenleri, ör. `ConnectionStrings__DefaultConnection`,
+  `ActiveDirectory__ServiceAccountPassword`. `appsettings.Production.json` gizli değer içermez. Ayar tablosu ve
+  kurulum: [`deploy/iis/README.md`](deploy/iis/README.md#ayarlar).
 
 Frontend tarafında `.env.example` yalnızca geliştirme proxy adresini içerir; `VITE_` değişkenleri tarayıcıya
 gömüldüğü için oraya gizli değer yazılmaz.

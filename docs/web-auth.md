@@ -73,5 +73,6 @@ Sınırlar:
 
 - Tarayıcı testleri sahte dizinle yapıldı. Gerçek AD girişi API düzeyinde Samba AD ile test edildi; şirketin gerçek
   AD'siyle henüz hiç denenmedi (bkz. [`active-directory.md`](active-directory.md#ortam-engeli-şirketin-gerçek-adsi)).
-- React şimdilik Vite (geliştirme) veya `vite preview` (test) üzerinden sunuluyor. IIS'te React, `/api` ve `/hubs`
-  aynı origin'den sunulacak; statik dosyaların anonim erişimi ve sayfa CSP'si yayın aşamasında eklenecek.
+- Geliştirmede React Vite üzerinden, uçtan uca testlerde `vite preview` üzerinden sunulur. Yayında React derlemesi
+  API ile aynı klasörden ve aynı origin'den sunulur; sayfa CSP'si ve önbellek kuralları
+  [`api.md`](api.md#react-sayfaları)'de.

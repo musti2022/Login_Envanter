@@ -156,6 +156,11 @@ kullanılmadı.
 
 WebSocket için sunucuda IIS "WebSocket Protocol" özelliği kurulu olmalıdır. Kurulu değilse istemci Server-Sent
 Events'e veya Long Polling'e düşer; bağlantı çalışır ama daha fazla istek üretir.
+[`Test-ServerPrerequisites.ps1`](../deploy/iis/Test-ServerPrerequisites.ps1) özelliğin kurulu olduğunu denetler.
+
+HTTP/2 üzerinde tarayıcı WebSocket'i `CONNECT` isteğiyle açar (RFC 8441). Bu istek veri değiştirmez; CSRF kontrolü
+onu WebSocket el sıkışması olarak tanır ve token istemez. Origin kontrolü yine uygulanır. 38. günde yayın klasörü
+Chromium'da HTTP/2 ile denenirken bulundu ve düzeltildi (`Http2WebSocketTests`, gerçek Kestrel üzerinde).
 
 ## Ayarlar
 
@@ -178,6 +183,7 @@ Events'e veya Long Polling'e düşer; bağlantı çalışır ama daha fazla iste
 | `An_open_connection_does_not_keep_an_idle_session_alive` | Bağlantı trafiği etkinlik sayılmaz; boşta kalma süresinde bağlantı kapanır |
 | `A_connection_is_closed_when_the_directory_takes_the_users_access_away` | AD erişimi kaldırınca bağlantı kapanır; audit `system` adına ve correlation ID ile |
 | `A_short_directory_outage_does_not_close_the_connection` | AD'ye kısa süre ulaşılamaması bağlantıyı kapatmaz |
+| `Http2WebSocketTests` (gerçek Kestrel, HTTP/2) | HTTP/2 `CONNECT` ile açılan WebSocket hub'a bağlanır (`200`); başka origin'den `403`; WebSocket olmayan `CONNECT` CSRF token'ı ister (`400`) |
 
 | `Every_kind_of_change_is_announced_once_it_is_committed` | Altı olayın her biri doğru demirbaş ve zamanla gelir; olay geldiği anda kilit beklemeyen bir okuma değişikliği ve audit kaydını commit edilmiş görür |
 | `Every_open_connection_hears_of_a_change_made_by_another_administrator` | Bir yöneticinin değişikliğini başka yöneticinin iki sekmesi de duyar |

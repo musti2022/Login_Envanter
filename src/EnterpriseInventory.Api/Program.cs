@@ -58,7 +58,7 @@ try
         .ValidateDataAnnotations()
         .ValidateOnStart();
 
-    // No CORS: the React app, /api and /hubs are served from the same origin, so cross-origin calls are refused.
+    // No CORS: the React app (wwwroot), /api and /hubs are served from the same origin, so cross-origin calls are refused.
     var app = builder.Build();
 
     // `dotnet run -- seed-development-data` adds sample lookups to a development database and exits.
@@ -80,6 +80,7 @@ try
 
     app.UseHttpsRedirection();
     app.UseMiddleware<SecurityHeadersMiddleware>();
+    app.UseWebApp();
     app.UseSerilogRequestLogging(options =>
     {
         // Without this the middleware writes to the static startup logger, which has no file sink.

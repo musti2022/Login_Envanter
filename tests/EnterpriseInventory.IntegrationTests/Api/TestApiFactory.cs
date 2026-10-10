@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -23,7 +24,8 @@ public sealed class TestApiFactory(
     IReadOnlyDictionary<string, string?>? settings = null,
     Action<IApplicationBuilder>? appendToPipeline = null,
     bool useTestAuthentication = true,
-    Action<IServiceCollection>? configureServices = null) : WebApplicationFactory<Program>
+    Action<IServiceCollection>? configureServices = null,
+    string? webRoot = null) : WebApplicationFactory<Program>
 {
     /// <summary>Data Protection keys shared by every test host, as the hosts of one deployment share theirs.</summary>
     public static readonly string KeysDirectory = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "ei-test-dataprotection-keys")).FullName;
@@ -48,6 +50,9 @@ public sealed class TestApiFactory(
         ["ActiveDirectory:ConnectTimeoutSeconds"] = "2",
     };
 
+    /// <summary>Set once the factory listens for the API's start; see <see cref="CreateHost"/>.</summary>
+    private readonly TaskCompletionSource _listening = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
     public HttpClient CreateAnonymousClient() => CreateClient(new WebApplicationFactoryClientOptions
     {
         BaseAddress = new Uri("https://localhost"),
@@ -62,9 +67,39 @@ public sealed class TestApiFactory(
         return client;
     }
 
+    /// <summary>
+    /// The API's own thread runs on as soon as its host is built, and a start that fails disposes the host. If that
+    /// happens before WebApplicationFactory listens for the start, the factory throws ObjectDisposedException instead
+    /// of the API's exception (a test that expects the API to refuse its settings then fails at random). So the host
+    /// waits for the factory (<see cref="WaitForFactoryLifetime"/>) and the API's own exception always reaches the test.
+    /// </summary>
+    protected override IHost CreateHost(IHostBuilder builder)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        builder.ConfigureServices(services =>
+        {
+            var lifetime = services.Last(service => service.ServiceType == typeof(IHostLifetime));
+            services.Remove(lifetime);
+            services.AddSingleton<IHostLifetime>(provider => new WaitForFactoryLifetime(Create<IHostLifetime>(provider, lifetime), _listening.Task));
+        });
+
+        var host = builder.Build();
+        // StartAsync registers for the start before it first waits.
+        var started = host.StartAsync();
+        _listening.TrySetResult();
+        started.GetAwaiter().GetResult();
+        return host;
+    }
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment(environment);
+        if (webRoot is not null)
+        {
+            // Where a published site keeps the React build (wwwroot); the source tree has none.
+            builder.UseWebRoot(webRoot);
+        }
+
         builder.ConfigureAppConfiguration((_, configuration) =>
         {
             var values = new Dictionary<string, string?>(UnreachableDirectory)
@@ -94,6 +129,23 @@ public sealed class TestApiFactory(
 
             configureServices?.Invoke(services);
         });
+    }
+
+    private static T Create<T>(IServiceProvider provider, ServiceDescriptor descriptor) =>
+        (T)(descriptor.ImplementationInstance
+            ?? descriptor.ImplementationFactory?.Invoke(provider)
+            ?? ActivatorUtilities.CreateInstance(provider, descriptor.ImplementationType!));
+
+    /// <summary>The host's lifetime, holding the start until the factory listens for it.</summary>
+    private sealed class WaitForFactoryLifetime(IHostLifetime inner, Task listening) : IHostLifetime
+    {
+        public async Task WaitForStartAsync(CancellationToken cancellationToken)
+        {
+            await listening.WaitAsync(TimeSpan.FromMinutes(1), cancellationToken);
+            await inner.WaitForStartAsync(cancellationToken);
+        }
+
+        public Task StopAsync(CancellationToken cancellationToken) => inner.StopAsync(cancellationToken);
     }
 
     /// <summary>Runs <paramref name="configure"/> after the API's pipeline, i.e. for requests no endpoint handled.</summary>

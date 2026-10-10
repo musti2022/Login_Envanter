@@ -36,14 +36,14 @@ noktaları (11–15. gün) ayrı dokümanda: [`assets-api.md`](assets-api.md); t
   bile `401` alır.
 - Anonim erişim yalnızca `AllowAnonymous` ile açılır. Şu an yalnızca `live`, `ready`, `GET /api/auth/csrf` ve
   `POST /api/auth/login` anonimdir; bir test bu listeyi denetler, yeni bir anonim endpoint eklenirse test kırılır.
+  React derlemesinin dosyaları endpoint değildir; yetkilendirmeden önce statik dosya olarak sunulur, veri içermez
+  (bkz. aşağıda "React sayfaları").
 - API giriş sayfasına yönlendirmez; oturum yoksa `401`, yetki yoksa `403` döner.
 - Oturum çerezi `__Host-EnterpriseInventory`: HttpOnly, Secure, SameSite=Strict, kalıcı değil. Yalnızca girişte
   `Bim_Envanter` üyelerine verilir ve sunucudaki bir oturuma bağlıdır; oturum 20 dakika işlem yapılmazsa, 8 saat
   dolunca, çıkışta veya AD yetkisi kalkınca biter. Ayrıntı: [`session-security.md`](session-security.md).
 - Durum değiştiren her istek (GET/HEAD/OPTIONS/TRACE dışı) `X-CSRF-TOKEN` başlığında geçerli bir CSRF token'ı
   ister; yoksa `400` `csrf_invalid` "Güvenlik doğrulaması başarısız oldu." döner.
-- React sayfaları API'den sunulmaya başlandığında (giriş ekranı dahil) statik dosyalar ayrıca anonim
-  erişime açılacak.
 
 ## Giriş: `POST /api/auth/login`
 
@@ -115,9 +115,29 @@ Tüm hatalar RFC 7807 ProblemDetails (`application/problem+json`) biçimindedir:
 Tüm yanıtlarda: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`,
 `Cross-Origin-Opener-Policy: same-origin`, kısıtlı `Permissions-Policy`. `/api` ve `/hubs` yanıtlarında ayrıca
 `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'` ve `Cache-Control: no-store`. Kestrel
-`Server` başlığını göndermez (IIS için `web.config` ayarı yayın aşamasında yapılacak). Üretimde HSTS açıktır.
+`Server` başlığını göndermez; IIS'te `web.config` `Server` ve `X-Powered-By` başlıklarını kaldırır
+(`WebConfigTests`). Üretimde HSTS açıktır.
 
-React sayfalarının CSP'si, sayfalar API'den sunulmaya başlandığında ayrıca tanımlanacak.
+## React sayfaları
+
+Yayında React derlemesi API ile aynı klasörden (`wwwroot`) ve aynı adresten sunulur
+([`deploy/iis/README.md`](../deploy/iis/README.md)).
+
+- `/assets/...` altındaki dosyaların adı içerikleriyle değişir; `Cache-Control: public, max-age=31536000, immutable`.
+- `index.html` ve diğer dosyalar `Cache-Control: no-cache`; yeni sürüm yayınlandığında tarayıcı hemen alır.
+- Hiçbir endpoint'e uymayan, dosya adı olmayan bir sayfa adresine (`/`, `/envanter/123`) `GET`/`HEAD` isteği
+  `index.html` alır; yönlendirmeyi React yapar. Uzantılı ama var olmayan bir dosya (`/eksik.js`) sayfa almaz, bilinmeyen
+  her adres gibi `401`/`404` döner. Bu bir yönlendirme kuralı (catch-all route) değil, bir ara katmandır: catch-all
+  route, yönlendirmenin yöntem ve içerik türü kontrollerine katıldığı için API'nin `405` ve `415` yanıtlarını `404`
+  yapıyordu (38. günde tüm entegrasyon testleri çalıştırılınca bulundu).
+- `/api/...` ve `/hubs/...` hiçbir zaman sayfaya düşmez: oturumsuz istek `401`, var olmayan API adresi `404`
+  problem+json alır. Sayfa adresine `POST`/`PUT`/`PATCH`/`DELETE` sayfa almaz (oturumsuz `401`, yönetici `404`).
+- Sayfaların CSP'si: `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;
+  font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'`.
+  `eval` ve satır içi script yoktur (Zod `jitless` ayarıyla çalışır, bkz. `src/zodConfig.ts`); `style-src`'deki
+  `'unsafe-inline'` Material UI'nin çalışma anında eklediği stiller içindir.
+
+Testler: `WebAppHostingTests`; 38. günde yayın klasörü Chromium'da CSP ihlali olmadan çalıştı.
 
 ## CORS
 

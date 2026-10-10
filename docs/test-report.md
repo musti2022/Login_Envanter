@@ -198,7 +198,8 @@ Bu rapordaki hiçbir test aşağıdakileri kanıtlamaz:
 
 - Şirketin gerçek Active Directory'si (domain, grup SID'i, servis hesabı, DC sertifikası).
 - Şirketin SQL Server'ı ve oradaki yetkiler; burada SQL Server 2022 container'ı kullanıldı.
-- IIS, Windows Server, ASP.NET Core Hosting Bundle ve site bağlaması (38. gün hazırlığı ayrıca raporlanır).
+- IIS, Windows Server, ASP.NET Core Hosting Bundle ve site bağlaması. 38. günde yayın klasörü Production'da Kestrel ile
+  HTTPS üzerinden denendi: [`deploy/iis/README.md`](../deploy/iis/README.md#38-günde-denenenler).
 - Excel dosyalarının Microsoft Excel'de açılması; dosyalar Open XML SDK ile okunarak doğrulandı.
 - Chromium dışındaki tarayıcılar.
 - Gerçek kullanıcı yükü ve birden fazla sunucuda SignalR.
