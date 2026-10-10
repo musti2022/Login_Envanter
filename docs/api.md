@@ -14,6 +14,7 @@ noktaları (11–15. gün) ayrı dokümanda: [`assets-api.md`](assets-api.md); t
 
 - Anonim endpoint'ler yalnızca `Healthy`/`Unhealthy` döner; sunucu adı, hata mesajı gibi ayrıntı vermez.
   Ayrıntı sunucu loguna yazılır.
+- Üçü de yalnızca `GET` ve `HEAD` kabul eder (yük dengeleyici ve IIS yoklamaları için `HEAD` yeterlidir).
 - Migration uygulanmadan yayınlanan bir sürüm `ready` kontrolünde `503` döner (eksik migration adları
   `/api/health` yanıtında görünür).
 - Veritabanı kontrolü en fazla 5 saniye bekler. SQL Server kapatıldığında `ready` 5 saniyede `503`

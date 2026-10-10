@@ -11,6 +11,8 @@ internal static class HealthEndpoints
     public const string ReadyPath = "/api/health/ready";
     public const string DetailsPath = "/api/health";
 
+    private static readonly HttpMethodMetadata ReadOnly = new([HttpMethods.Get, HttpMethods.Head]);
+
     /// <summary>
     /// <list type="bullet">
     /// <item><c>/api/health/live</c>: the process is running. Checks no dependencies.</item>
@@ -18,17 +20,21 @@ internal static class HealthEndpoints
     /// <item><c>/api/health</c>: every check with its status and duration, for administrators only.</item>
     /// </list>
     /// The anonymous endpoints answer only <c>Healthy</c> or <c>Unhealthy</c>, so they reveal nothing about
-    /// the environment; failure details are logged on the server.
+    /// the environment; failure details are logged on the server. Health checks answer any method unless told
+    /// otherwise; these answer only GET and HEAD, and other methods get 405.
     /// </summary>
     public static IEndpointRouteBuilder MapApiHealthChecks(this IEndpointRouteBuilder endpoints)
     {
         endpoints.MapHealthChecks(LivePath, new HealthCheckOptions { Predicate = _ => false })
+            .WithMetadata(ReadOnly)
             .AllowAnonymous();
 
         endpoints.MapHealthChecks(ReadyPath, new HealthCheckOptions { Predicate = check => check.Tags.Contains(HealthCheckTags.Ready) })
+            .WithMetadata(ReadOnly)
             .AllowAnonymous();
 
         endpoints.MapHealthChecks(DetailsPath, new HealthCheckOptions { ResponseWriter = WriteDetailsAsync })
+            .WithMetadata(ReadOnly)
             .RequireAuthorization(AuthorizationPolicies.Administrator);
 
         return endpoints;
