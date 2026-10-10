@@ -1,4 +1,3 @@
-import type { AssetHistoryEntry } from './assetsApi'
 import { formatDateTime, statusLabels, typeLabels, type AssetStatus, type AssetType } from './labels'
 
 /** Recorded fields in the order they are shown; IDs are left out because the names stand next to them. */
@@ -21,10 +20,23 @@ const fieldLabels: Record<string, string> = {
   notes: 'Not',
   assignedAt: 'Zimmet tarihi',
   returnedAt: 'İade tarihi',
+  name: 'Ad',
+  isActive: 'Etkin',
+  // Sign-in records of administrators.
+  SamAccountName: 'Kullanıcı adı',
+  DisplayName: 'Ad soyad',
+  ClientAddress: 'IP adresi',
+  Reason: 'Neden',
 }
 
 /** Recorded for tracing, not for reading: the directory GUID of the employee. */
 const hiddenFields = new Set(['employeeObjectGuid'])
+
+/** The old and new values of an audit record (an asset's history or the audit log). */
+export interface RecordedValues {
+  oldValues: Record<string, unknown> | null
+  newValues: Record<string, unknown> | null
+}
 
 function formatValue(field: string, value: unknown): string {
   if (value === null || value === undefined || value === '') return '—'
@@ -36,11 +48,11 @@ function formatValue(field: string, value: unknown): string {
 }
 
 /**
- * The fields an entry changed, each with the text the history shows: "before → after" for a changed value, the
- * value alone when the entry records it on one side only (what an asset was created with, who it was assigned
- * to, who returned it). A field this version does not know is shown under its own name.
+ * Every field an entry records, in display order, each with its value before and after ("—" where there was
+ * none) and whether it changed. IDs are left out where the name stands next to them; a field this version does
+ * not know is shown under its own name.
  */
-export function changesOf(entry: AssetHistoryEntry) {
+export function fieldsOf(entry: RecordedValues) {
   const oldValues = entry.oldValues ?? {}
   const newValues = entry.newValues ?? {}
   const keys = [...new Set([...Object.keys(oldValues), ...Object.keys(newValues)])].filter(
@@ -48,12 +60,19 @@ export function changesOf(entry: AssetHistoryEntry) {
   )
   const order = Object.keys(fieldLabels)
   keys.sort((a, b) => (order.indexOf(a) + 1 || order.length + 1) - (order.indexOf(b) + 1 || order.length + 1))
-  return keys
-    .map((key) => {
-      const before = formatValue(key, oldValues[key])
-      const after = formatValue(key, newValues[key])
-      const text = !(key in oldValues) ? after : !(key in newValues) ? before : `${before} → ${after}`
-      return { field: fieldLabels[key] ?? key, before, after, text }
-    })
-    .filter((change) => change.before !== change.after)
+  return keys.map((key) => {
+    const before = formatValue(key, oldValues[key])
+    const after = formatValue(key, newValues[key])
+    const text = !(key in oldValues) ? after : !(key in newValues) ? before : `${before} → ${after}`
+    return { field: fieldLabels[key] ?? key, before, after, text, changed: before !== after }
+  })
+}
+
+/**
+ * The fields an entry changed, each with the text the history shows: "before → after" for a changed value, the
+ * value alone when the entry records it on one side only (what an asset was created with, who it was assigned
+ * to, who returned it).
+ */
+export function changesOf(entry: RecordedValues) {
+  return fieldsOf(entry).filter((field) => field.changed)
 }

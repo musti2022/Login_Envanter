@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, fireEvent, renderHook, screen, waitFor, within } from '@testing-library/react'
+import { auditLogsQueryKey } from '../audit/auditApi'
 import { dashboardQueryKey } from '../dashboard/dashboardApi'
 import { assetsQueryKey } from '../inventory/assetsApi'
 import { details, listItem, pageOf } from '../test/assetData'
@@ -90,13 +91,15 @@ describe('Live updates', () => {
     ['AssetAssigned'],
     ['AssetReturned'],
     ['AssetLocationChanged'],
-  ])('refresh the inventory list and the dashboard on %s of any asset', async (event) => {
+  ])('refresh the inventory list, the dashboard and the audit log on %s of any asset', async (event) => {
     let rows = [listItem({ id: 1, assetCode: 'DMR-0001' })]
     const requests = mockApi({ 'GET /api/assets': () => json(200, pageOf(rows)) })
     const { queryClient } = renderWithRouter('/envanter')
     const table = await screen.findByRole('table', { name: 'Demirbaş listesi' })
     await within(table).findByText('DMR-0001')
     queryClient.setQueryData(dashboardQueryKey, { totalCount: 1 })
+    const auditKey = [...auditLogsQueryKey, 'list', { page: 1 }]
+    queryClient.setQueryData(auditKey, { items: [] })
 
     rows = [...rows, listItem({ id: 7, assetCode: 'DMR-0007' })]
     announce(event, 7)
@@ -104,6 +107,7 @@ describe('Live updates', () => {
     expect(await within(table).findByText('DMR-0007')).toBeInTheDocument()
     expect(gets(requests, '/api/assets').map((r) => r.headers['x-background-request'] ?? 'user')).toEqual(['user', '1'])
     expect(queryClient.getQueryState(dashboardQueryKey)?.isInvalidated).toBe(true)
+    expect(queryClient.getQueryState(auditKey)?.isInvalidated).toBe(true)
   })
 
   it('leave the page of another asset alone', async () => {

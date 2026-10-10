@@ -9,6 +9,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type ReactNode } from 'react'
 import { Link as RouterLink, useLocation, useNavigate, useParams } from 'react-router'
 import { ApiError } from '../api/http'
+import { auditLogsQueryKey } from '../audit/auditApi'
 import { PageHeader } from '../components/PageHeader'
 import { ErrorState } from '../components/states/ErrorState'
 import { LoadingState } from '../components/states/LoadingState'
@@ -86,6 +87,7 @@ export function AssetDetailPage() {
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: assetsQueryKey })
     void queryClient.invalidateQueries({ queryKey: dashboardQueryKey })
+    void queryClient.invalidateQueries({ queryKey: auditLogsQueryKey })
   }
   const saved = (asset: AssetDetails, notice: string) => {
     assetSaved(queryClient, asset)
@@ -204,7 +206,15 @@ export function AssetDetailPage() {
           </CardContent>
         </Card>
         <Card>
-          <CardHeader title="Geçmiş" slotProps={{ title: { variant: 'h6', component: 'h2' } }} />
+          <CardHeader
+            title="Geçmiş"
+            action={
+              <Button size="small" component={RouterLink} to={`/denetim-gecmisi?entityName=Asset&entityId=${data.id}`}>
+                Denetim kayıtlarında aç
+              </Button>
+            }
+            slotProps={{ title: { variant: 'h6', component: 'h2' } }}
+          />
           <CardContent sx={{ pt: 0 }}>
             <AssetHistory assetId={data.id} />
           </CardContent>

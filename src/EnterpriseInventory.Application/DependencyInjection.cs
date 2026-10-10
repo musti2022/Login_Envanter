@@ -1,4 +1,5 @@
 using EnterpriseInventory.Application.Assets;
+using EnterpriseInventory.Application.Auditing;
 using EnterpriseInventory.Application.Authentication;
 using EnterpriseInventory.Application.Employees;
 using EnterpriseInventory.Application.Lookups;
@@ -20,6 +21,7 @@ public static class DependencyInjection
         services.AddScoped<AssetAssignmentService>();
         services.AddScoped<LookupService>();
         services.AddScoped<EmployeeService>();
+        services.AddScoped<AuditLogService>();
         return services;
     }
 }

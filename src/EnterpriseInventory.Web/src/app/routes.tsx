@@ -4,6 +4,7 @@ import { AppLayout } from '../layout/AppLayout'
 import { AssetCreatePage } from '../pages/AssetCreatePage'
 import { AssetDetailPage } from '../pages/AssetDetailPage'
 import { AssetEditPage } from '../pages/AssetEditPage'
+import { AuditLogPage } from '../pages/AuditLogPage'
 import { DashboardPage } from '../pages/DashboardPage'
 import { InventoryPage } from '../pages/InventoryPage'
 import { LoginPage } from '../pages/LoginPage'
@@ -70,17 +71,7 @@ export const routes: RouteObject[] = [
               />
             ),
           },
-          {
-            path: 'denetim-gecmisi',
-            element: (
-              <PlaceholderPage
-                title="Denetim Geçmişi"
-                description="Kayıtlar üzerinde yapılan tüm değişiklikleri izleyin."
-                emptyTitle="Henüz denetim kaydı yok"
-                emptyDescription="Denetim kayıtları, veri değişiklikleri başladığında burada listelenecek."
-              />
-            ),
-          },
+          { path: 'denetim-gecmisi', element: <AuditLogPage /> },
           { path: '*', element: <NotFoundPage /> },
         ],
       },

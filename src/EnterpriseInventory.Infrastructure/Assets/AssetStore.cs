@@ -25,7 +25,7 @@ internal sealed partial class AssetStore(
     /// Turkish_CI_AS, "pc-ist" would not find "PC-IST-01" (Turkish i is not I) and "canta" would not find "çanta".
     /// Uniqueness and sorting keep the Turkish rules.
     /// </summary>
-    private const string SearchCollation = "Latin1_General_100_CI_AI";
+    internal const string SearchCollation = "Latin1_General_100_CI_AI";
 
     public async Task<PagedResult<AssetListItem>> ListAsync(AssetListCriteria criteria, CancellationToken cancellationToken)
     {
@@ -279,7 +279,7 @@ internal sealed partial class AssetStore(
 
                     // Saved first so the audit record can name the asset by its ID.
                     await db.SaveChangesAsync(token).ConfigureAwait(false);
-                    Audit(asset, AuditAction.Created, oldValues: null, AssetAuditTrail.Serialize(AssetAuditTrail.Snapshot(asset)));
+                    Audit(asset, AuditAction.Created, oldValues: null, AssetAuditTrail.Serialize(AssetAuditTrail.Snapshot(asset)), timeProvider.GetUtcNow());
                     await db.SaveChangesAsync(token).ConfigureAwait(false);
                     await transaction.CommitAsync(token).ConfigureAwait(false);
                     LogCreated(asset.Id, asset.AssetCode);
@@ -361,10 +361,7 @@ internal sealed partial class AssetStore(
             return AssetWriteResult.Succeeded(await FindAsync(id, cancellationToken).ConfigureAwait(false));
         }
 
-        foreach (var (action, oldValues, newValues) in changes)
-        {
-            Audit(asset, action, oldValues, newValues);
-        }
+        Audit(asset, changes);
 
         try
         {
@@ -435,10 +432,7 @@ internal sealed partial class AssetStore(
             return AssetWriteResult.Succeeded(await FindAsync(id, cancellationToken).ConfigureAwait(false));
         }
 
-        foreach (var (action, oldValues, newValues) in changes)
-        {
-            Audit(asset, action, oldValues, newValues);
-        }
+        Audit(asset, changes);
 
         try
         {
@@ -482,10 +476,7 @@ internal sealed partial class AssetStore(
             return AssetWriteResult.Rule(ex.Code);
         }
 
-        foreach (var (action, oldValues, newValues) in AssetAuditTrail.Changes(before, AssetAuditTrail.Snapshot(asset)))
-        {
-            Audit(asset, action, oldValues, newValues);
-        }
+        Audit(asset, AssetAuditTrail.Changes(before, AssetAuditTrail.Snapshot(asset)));
 
         try
         {
@@ -651,7 +642,17 @@ internal sealed partial class AssetStore(
                 : throw new InvalidOperationException("An unexpected unique index refused the asset.", exception);
     }
 
-    private void Audit(Asset asset, AuditAction action, string? oldValues, string? newValues) =>
+    /// <summary>The audit records of one change, one per kind of change: same user, moment and correlation ID.</summary>
+    private void Audit(Asset asset, IEnumerable<(AuditAction Action, string OldValues, string NewValues)> changes)
+    {
+        var now = timeProvider.GetUtcNow();
+        foreach (var (action, oldValues, newValues) in changes)
+        {
+            Audit(asset, action, oldValues, newValues, now);
+        }
+    }
+
+    private void Audit(Asset asset, AuditAction action, string? oldValues, string? newValues, DateTimeOffset now) =>
         db.AuditLogs.Add(AuditLog.Create(
             AssetAuditTrail.EntityName,
             AssetAuditTrail.EntityId(asset),
@@ -659,7 +660,7 @@ internal sealed partial class AssetStore(
             oldValues,
             newValues,
             currentUser.UserName ?? throw new InvalidOperationException("Assets can only be changed by a signed-in user."),
-            timeProvider.GetUtcNow(),
+            now,
             requestContext.CorrelationId));
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Asset {AssetId} ({AssetCode}) created")]

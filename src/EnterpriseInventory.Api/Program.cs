@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json.Serialization;
 using EnterpriseInventory.Api.Assets;
+using EnterpriseInventory.Api.Auditing;
 using EnterpriseInventory.Api.Auth;
 using EnterpriseInventory.Api.Dashboard;
 using EnterpriseInventory.Api.Employees;
@@ -95,6 +96,7 @@ try
     app.MapDashboardEndpoints();
     app.MapLookupEndpoints();
     app.MapEmployeeEndpoints();
+    app.MapAuditLogEndpoints();
     app.MapRealtime();
 
     await app.RunAsync();

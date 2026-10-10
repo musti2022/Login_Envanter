@@ -4,7 +4,7 @@
 üzerinden LDAPS ile yapılır ve yalnızca `Bim_Envanter` güvenlik grubunun üyeleri uygulamaya girebilir.
 Proje gereksinimleri ve 40 günlük plan: [`proje_talimatlari.md`](proje_talimatlari.md).
 
-> **Durum:** 30. gün — solution iskeleti, Türkçe arayüz kabuğu,
+> **Durum:** 31. gün — solution iskeleti, Türkçe arayüz kabuğu,
 > domain modeli, SQL Server şeması (EF Core migration, RowVersion, kısıtlar, soft delete sorgu filtresi, idempotent
 > yayın betiği, yedek ve geri dönüş planı, geliştirme seed'i), API altyapısı (health endpoint'leri, varsayılan olarak kapalı yetkilendirme, hata yanıtları,
 > güvenlik başlıkları, rate limiting), Active Directory LDAPS bağlantısı (sıkı TLS sertifika doğrulaması), giriş API'si
@@ -19,7 +19,8 @@ Proje gereksinimleri ve 40 günlük plan: [`proje_talimatlari.md`](proje_talimat
 > ekranları, yalnızca oturumlu yöneticilere açık SignalR hub'ı (CSRF ve origin kontrolü, oturum bitince bağlantının
 > kapanması), commit sonrası yayımlanan demirbaş olayları, bu olaylarla ekranların API'den canlı yenilenmesi ve kopan bağlantının
 > kendiliğinden yeniden kurulup ekranın tam eşitlenmesi, gerçek SQL Server'da yarış koşturan eşzamanlılık testleri
-> (aynı çalışana ve aynı demirbaşa yönelik zimmetler sıraya girer). AD entegrasyonu Samba test domain'i ile test
+> (aynı çalışana ve aynı demirbaşa yönelik zimmetler sıraya girer), denetim kayıtları API'si ve Denetim Geçmişi ekranı
+> (her değişikliğin eski ve yeni değerleri, kullanıcı, zaman ve işlem numarasıyla). AD entegrasyonu Samba test domain'i ile test
 > edildi; şirketin gerçek AD'si ile henüz denenmedi. Tanım yönetimi (ad değiştirme, pasifleştirme) henüz yok.
 
 ## Teknolojiler
@@ -59,7 +60,8 @@ RowVersion çakışması, arşivleme ve audit için [`docs/assets-api.md`](docs/
 lokasyon ve departman listeleri için [`docs/lookups-api.md`](docs/lookups-api.md); çalışan araması, zimmet ve iade
 için [`docs/assignments-api.md`](docs/assignments-api.md); canlı bildirim hub'ı için
 [`docs/realtime.md`](docs/realtime.md) (olaylar ve çoklu sunucu notları dahil); aynı anda yapılan değişikliklerde
-alınan önlemler ve yarış testleri için [`docs/concurrency.md`](docs/concurrency.md); gösterge paneli, envanter tablosu,
+alınan önlemler ve yarış testleri için [`docs/concurrency.md`](docs/concurrency.md); denetim kayıtları ve Denetim
+Geçmişi ekranı için [`docs/audit.md`](docs/audit.md); gösterge paneli, envanter tablosu,
 filtreler, form ve detay ekranları için [`docs/inventory-ui.md`](docs/inventory-ui.md).
 
 ## Gereksinimler

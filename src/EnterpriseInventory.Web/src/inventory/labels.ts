@@ -45,6 +45,9 @@ const actionLabels: Record<string, string> = {
   Returned: 'İade alındı',
   LocationChanged: 'Konumu değişti',
   StatusChanged: 'Durumu değişti',
+  SignedIn: 'Giriş yaptı',
+  SignedOut: 'Çıkış yaptı',
+  AccessRevoked: 'Erişimi kaldırıldı',
 }
 
 /** An audit action in Turkish; an action this version does not know is shown as sent. */
@@ -55,7 +58,10 @@ export function actionLabel(action: string) {
 const numberFormat = new Intl.NumberFormat('tr-TR')
 const dateTimeFormat = new Intl.DateTimeFormat('tr-TR', { dateStyle: 'short', timeStyle: 'short' })
 const dateFormat = new Intl.DateTimeFormat('tr-TR', { dateStyle: 'short' })
+const preciseFormat = new Intl.DateTimeFormat('tr-TR', { dateStyle: 'short', timeStyle: 'medium' })
 
 export const formatNumber = (value: number) => numberFormat.format(value)
 export const formatDateTime = (value: string) => dateTimeFormat.format(new Date(value))
 export const formatDate = (value: string) => dateFormat.format(new Date(value))
+/** With seconds, for audit records. */
+export const formatPreciseDateTime = (value: string) => preciseFormat.format(new Date(value))

@@ -78,6 +78,17 @@ test('on a phone every screen fits the width and the main tasks work', async ({ 
   await expect(page.getByText('Bu demirbaş arşivlenmiş; yalnızca görüntülenebilir.')).toBeVisible()
   await expectToFitTheWidth(page)
 
+  await page.getByRole('link', { name: 'Denetim kayıtlarında aç' }).click()
+  const auditRows = page.getByRole('table', { name: 'Denetim kayıtları' }).getByRole('row')
+  await expect(auditRows.nth(1)).toContainText('Arşivlendi')
+  await expectToFitTheWidth(page)
+  await screenshot(page, testInfo, 'denetim-gecmisi')
+  await auditRows.nth(1).getByRole('button', { name: /ayrıntı/ }).click()
+  await expect(page.getByRole('dialog', { name: `Arşivlendi: Demirbaş ${asset.assetCode}` })).toBeVisible()
+  await expectToFitTheWidth(page)
+  await screenshot(page, testInfo, 'denetim-kaydi')
+  await page.getByRole('button', { name: 'Kapat' }).click()
+
   await page.goto('/envanter/yeni')
   await expect(page.getByRole('button', { name: 'Demirbaşı ekle' })).toBeVisible()
   await expectToFitTheWidth(page)
