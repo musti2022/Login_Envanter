@@ -64,9 +64,17 @@ internal static class DataProtectionSetup
                         "DataProtection:KeysDirectory is required outside Development; without it the keys that protect the session cookies are not kept safely across restarts.");
             }
 
-            return directory.Contains("CHANGE-ME", StringComparison.OrdinalIgnoreCase) || !Path.IsPathFullyQualified(directory)
-                ? ValidateOptionsResult.Fail($"DataProtection:KeysDirectory must be the full path of the keys folder, not '{directory}'.")
-                : ValidateOptionsResult.Success;
+            if (directory.Contains("CHANGE-ME", StringComparison.OrdinalIgnoreCase) || !Path.IsPathFullyQualified(directory))
+            {
+                return ValidateOptionsResult.Fail($"DataProtection:KeysDirectory must be the full path of the keys folder, not '{directory}'.");
+            }
+
+            // Outside Development the folder is never created on the fly: it would get the parent's permissions, and a
+            // mistyped path would quietly start a new key ring and sign everyone out. The install script creates it.
+            return environment.IsDevelopment() || Directory.Exists(directory)
+                ? ValidateOptionsResult.Success
+                : ValidateOptionsResult.Fail(
+                    $"DataProtection:KeysDirectory '{directory}' does not exist; create it with access for the application pool identity only (deploy/iis/Install-EnterpriseInventorySite.ps1).");
         }
     }
 }

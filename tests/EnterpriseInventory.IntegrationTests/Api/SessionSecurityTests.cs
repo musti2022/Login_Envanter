@@ -377,6 +377,67 @@ public sealed class SessionSecurityTests(SqlServerDatabaseFixture database) : IA
         }
     }
 
+    /// <summary>
+    /// Day 39: the key folder is part of the server backup. Lost keys sign everyone out (new keys cannot read the old
+    /// cookies); a copy of the folder put back brings the sessions back, as long as they have not ended meanwhile.
+    /// </summary>
+    [SqlServerFact]
+    public async Task A_copy_of_the_key_folder_brings_the_sessions_back_and_new_keys_do_not()
+    {
+        var keys = Directory.CreateTempSubdirectory("ei-keys-").FullName;
+        var copy = Directory.CreateTempSubdirectory("ei-keys-copy-").FullName;
+        try
+        {
+            string cookie;
+            await using (var first = KeysApi(keys))
+            {
+                using var client = first.CreateAnonymousClient();
+                using var login = await client.PostLoginAsync(new { userName = _directory.UserName, password = ControllableDirectory.Password });
+                cookie = CookieValue(login);
+            }
+
+            foreach (var file in Directory.GetFiles(keys))
+            {
+                File.Copy(file, Path.Combine(copy, Path.GetFileName(file)));
+            }
+
+            // The folder is lost: the application starts with new keys.
+            foreach (var file in Directory.GetFiles(keys))
+            {
+                File.Delete(file);
+            }
+
+            await using (var withNewKeys = KeysApi(keys))
+            {
+                using var client = withNewKeys.CreateAnonymousClient();
+                using var response = await WithCookie(client, cookie).GetAsync(AuthClient.Me);
+                Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+            }
+
+            // The copy is put back next to the new key.
+            foreach (var file in Directory.GetFiles(copy))
+            {
+                File.Copy(file, Path.Combine(keys, Path.GetFileName(file)));
+            }
+
+            await using var restored = KeysApi(keys);
+            using var again = restored.CreateAnonymousClient();
+            using var restoredResponse = await WithCookie(again, cookie).GetAsync(AuthClient.Me);
+            Assert.Equal(HttpStatusCode.OK, restoredResponse.StatusCode);
+        }
+        finally
+        {
+            Directory.Delete(keys, recursive: true);
+            Directory.Delete(copy, recursive: true);
+        }
+
+        TestApiFactory KeysApi(string directory) => new(
+            database.ConnectionString,
+            useTestAuthentication: false,
+            settings: new Dictionary<string, string?> { ["DataProtection:KeysDirectory"] = directory },
+            configureServices: Services);
+    }
+
     private TestApiFactory Api(IReadOnlyDictionary<string, string?>? settings = null)
     {
         var api = new TestApiFactory(database.ConnectionString, useTestAuthentication: false, settings: settings, configureServices: Services);

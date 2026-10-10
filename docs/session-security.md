@@ -76,9 +76,11 @@ sonra eski çerez tekrar gönderilse bile `401` alır.
 
 Çerezleri şifreleyen anahtarlar `DataProtection:KeysDirectory` klasöründe tutulur; böylece IIS uygulama havuzu
 yeniden başladığında kullanıcıların oturumu düşmez. Windows'ta anahtarlar DPAPI (makine) ile şifrelenir.
-Development dışında bu ayar zorunludur; boşsa, göreli bir yolsa veya `CHANGE-ME` içeriyorsa uygulama başlamaz.
-Klasöre yalnızca uygulama havuzu kimliği ve yöneticiler erişebilmelidir; yedeklenmesi, kaybolursa yalnızca açık
-oturumların düşmesine yol açar.
+Development dışında bu ayar zorunludur; boşsa, göreli bir yolsa, `CHANGE-ME` içeriyorsa veya klasör yoksa uygulama
+başlamaz. Klasörü uygulama oluşturmaz (kurulum betiği oluşturur): yanlış yazılmış bir yol sessizce yeni anahtarlar
+üretip herkesin oturumunu düşürmesin ve klasör üst klasörün izinlerini almasın. Klasöre yalnızca uygulama havuzu
+kimliği ve yöneticiler erişebilmelidir. Klasör sunucu yedeğine dahil edilir; kaybolursa yalnızca açık oturumlar düşer,
+aynı sunucuya geri kopyalanınca oturumlar geri gelir ([IIS](../deploy/iis/README.md#data-protection-anahtarları)).
 
 ## Test sonuçları
 
@@ -95,6 +97,8 @@ SQL Server ve Samba AD açıkken tüm testler geçti (birim 270, entegrasyon 176
 | AD kesintisi: oturum izin süresi boyunca sürer, kontrol en fazla dakikada bir denenir, 5+15 dakikada biter; kısa kesintiden sonra kontrol tekrar onaylanır | Integration | Geçti |
 | Veritabanında iptal edilen oturum bir sonraki istekte `401`; geçerli şifrelenmiş ama oturumsuz çerez `401`; veritabanında anahtarın yalnızca SHA-256 özeti var | Integration | Geçti |
 | Anahtar klasörü: yeniden başlatılan uygulama önceki çerezi kabul eder, klasörde anahtar dosyası oluşur | Integration | Geçti |
+| Anahtar klasörü kaybolunca eski çerez `401`; klasörün kopyası geri konunca aynı çerez `200` (39. gün) | Integration (SQL Server) | Geçti |
+| Production'da var olmayan anahtar klasörü: uygulama başlamaz, klasörü oluşturmaz (39. gün) | Integration | Geçti |
 | Samba AD, servis hesabıyla yeniden kontrol: doğrudan, birincil grup ve (politikaya göre) iç içe üye `Allowed`; üye olmayan, tuzak grup üyesi `NotAuthorized`; pasif, süresi dolmuş hesap; bilinmeyen GUID ve `BaseDn` dışı `AccountNotFound`; yanlış servis parolası `DirectoryUnavailable` (parola loga yazılmaz) | Integration (Samba AD) | Geçti |
 | Kasıtlı bozma: oturum kontrolünü atlamak 9, CSRF ara katmanını kaldırmak 2 testi kırdı | — | Yakalandı |
 

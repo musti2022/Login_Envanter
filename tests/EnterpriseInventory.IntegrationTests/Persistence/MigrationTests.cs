@@ -236,7 +236,7 @@ internal static class DeploymentScript
 
     public static string Path => System.IO.Path.Combine(RepositoryRoot(), RelativePath);
 
-    private static string RepositoryRoot()
+    internal static string RepositoryRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory is not null && !File.Exists(System.IO.Path.Combine(directory.FullName, "EnterpriseInventory.slnx")))

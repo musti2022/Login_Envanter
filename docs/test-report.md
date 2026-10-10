@@ -203,7 +203,9 @@ Bu rapordaki hiçbir test aşağıdakileri kanıtlamaz:
 - Excel dosyalarının Microsoft Excel'de açılması; dosyalar Open XML SDK ile okunarak doğrulandı.
 - Chromium dışındaki tarayıcılar.
 - Gerçek kullanıcı yükü ve birden fazla sunucuda SignalR.
-- Yedekten dönüş ve Data Protection anahtarlarının kalıcılığı otomatik testte değil; 39. gün.
+- Windows'ta DPAPI ile şifrelenmiş Data Protection anahtarlarının yedekten geri yüklenmesi. Yedekten dönüş ve anahtar
+  klasörünün kopyasıyla oturumların geri gelmesi 39. günde test SQL Server'ında ve Linux'ta denendi
+  ([`deploy/database-rollback.md`](../deploy/database-rollback.md#39-gün)).
 
 ## Yeniden çalıştırma
 

@@ -31,7 +31,7 @@ Her kontrolün nasıl sağlandığı ve onu kanıtlayan test. **Durum** sütunu:
 | Oturum sunucu tarafında | Çerez yalnızca anahtar taşır; veritabanında anahtarın özeti; çıkışta oturum sunucuda biter | `Only_a_hash_of_the_session_key_is_stored`, `Signing_out_ends_the_session_on_the_server_so_the_old_cookie_is_worthless`, `A_valid_cookie_without_a_server_side_session_is_refused` | Test edildi |
 | Güvenli çerez | `Secure`, `HttpOnly`, `SameSite=Strict`, host'a bağlı (`__Host-`) | `A_member_gets_a_secure_session_cookie_that_grants_access`, `The_csrf_cookie_is_a_host_only_secure_http_only_cookie` | Test edildi |
 | Boşta ve mutlak süre | 20 dakika boşta, 8 saat mutlak (ayardan) | `A_session_ends_after_twenty_idle_minutes_and_activity_keeps_it_alive`, `A_session_ends_eight_hours_after_sign_in_however_active` | Test edildi |
-| Çerez anahtarları kalıcı | Data Protection anahtarları ayarlı klasörde; Development dışında klasör yoksa uygulama başlamaz | `Sessions_survive_a_restart_because_the_cookie_keys_are_kept`, `Without_a_safe_place_for_the_cookie_keys_the_application_does_not_start` | Test edildi; IIS'te klasör izni ortamda doğrulanacak |
+| Çerez anahtarları kalıcı | Data Protection anahtarları ayarlı klasörde; Development dışında ayar yoksa veya klasör yoksa uygulama başlamaz, klasörü kendisi oluşturmaz; klasörün yedeği oturumları geri getirir | `Sessions_survive_a_restart_because_the_cookie_keys_are_kept`, `Without_a_safe_place_for_the_cookie_keys_the_application_does_not_start`, `A_keys_folder_that_does_not_exist_stops_the_application_instead_of_being_created`, `A_copy_of_the_key_folder_brings_the_sessions_back_and_new_keys_do_not` | Test edildi; IIS'te klasör izni ve DPAPI ortamda doğrulanacak |
 | Giriş denemesi sınırlı | İstemci adresi başına giriş limiti, kullanıcı başına genel limit, `429` + `Retry-After` | `Sign_in_attempts_are_rate_limited_per_client_address`, `Requests_over_the_limit_get_429_with_retry_after`, `Each_signed_in_user_has_a_separate_limit` | Test edildi |
 | Kullanıcı adı ifşa edilmez | Parola doğrulanmadan önceki retlerde hesap durumu söylenmez | `Account_state_is_not_revealed_without_the_right_password`, `Refusals_before_the_password_was_accepted_mask_the_user_name` | Test edildi |
 
@@ -88,6 +88,8 @@ Her kontrolün nasıl sağlandığı ve onu kanıtlayan test. **Durum** sütunu:
 | Kontrol | Nasıl | Kanıt | Durum |
 | --- | --- | --- | --- |
 | Uygulama şemayı değiştirmez | Başlangıçta `Migrate`/`EnsureCreated` yok; runtime hesabı yalnızca okuma/yazma | `The_API_never_creates_or_migrates_the_database_when_it_starts`, [`grant-runtime-permissions.sql`](../scripts/sql/grant-runtime-permissions.sql) | Test edildi; şirket SQL Server'ında ortamda doğrulanacak |
+| Runtime ve yayın yetkileri ayrı | Runtime hesabı silemez, şemayı, audit kayıtlarını ve migration geçmişini değiştiremez, yetki veremez; yayın betiği her yayında [`verify-runtime-permissions.sql`](../deploy/sql/verify-runtime-permissions.sql) ile denetler ve runtime hesabıyla yayını reddeder | `RuntimePermissionTests` (3 test; fazladan `db_datawriter` yakalandı), 39. gün tatbikatı ([`database-rollback.md`](../deploy/database-rollback.md#39-gün)) | Test edildi; şirket SQL Server'ında ortamda doğrulanacak |
+| Yedekten dönüş | Yayından önce doğrulanmış yedek; geri yükleme yalnızca bu veritabanının bu sunucudaki tam yedeğiyle ve bağlantılar kesilmeden önce denetlenerek | `DatabaseRecoveryTests` (2 test), 39. gün tatbikatı | Test edildi; şirket SQL Server'ında DBA ile tatbikat yapılacak |
 | Sahte AD üretimde çalışmaz | `Fake` modu Development dışında uygulamayı durdurur | `Fake_directory_stops_the_application_outside_development`, `Fake_directory_is_refused_outside_development` | Test edildi |
 
 ## Bağımlılık taraması
@@ -107,7 +109,10 @@ Bunlar bu depoda test edilemedi; yapılmadan "tamam" denmez:
 
 - [ ] Şirketin AD'si ile LDAPS giriş, grup SID kontrolü, devre dışı/süresi dolmuş hesap ve çalışan araması
   (Samba'daki testlerin aynısı, [`active-directory.md`](active-directory.md)).
-- [ ] Şirketin SQL Server'ında runtime ve migration hesaplarının ayrı olduğu, runtime hesabının şema değiştiremediği.
+- [ ] Şirketin SQL Server'ında runtime ve migration hesaplarının ayrı olduğu, runtime hesabının şema değiştiremediği:
+  [`Update-EnterpriseInventoryDatabase.ps1`](../deploy/sql/Update-EnterpriseInventoryDatabase.ps1) 0 HATA vermeli.
+- [ ] Şirketin SQL Server'ında gerçek yedek klasörüyle yedek alma ve geri dönüş tatbikatı
+  ([`database-rollback.md`](../deploy/database-rollback.md#yedekten-dönüş)).
 - [ ] IIS'te HTTPS binding, geçerli sertifika, HSTS ve HTTP'den yönlendirme: sunucuda
   [`Test-ServerPrerequisites.ps1`](../deploy/iis/Test-ServerPrerequisites.ps1) ve
   [`Test-Deployment.ps1`](../deploy/iis/Test-Deployment.ps1) 0 HATA vermeli.

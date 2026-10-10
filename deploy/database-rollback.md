@@ -7,40 +7,93 @@ bunu boş bir veritabanıyla Production ortamında doğrular). Runtime hesabın�
 
 | Dosya | Ne işe yarar |
 | --- | --- |
+| [`sql/Update-EnterpriseInventoryDatabase.ps1`](sql/Update-EnterpriseInventoryDatabase.ps1) | Yayın betiği: aşağıdaki SQL betiklerini sırayla ve ilk hatada durarak çalıştırır, sonucu denetler (`-WhatIf` destekler) |
+| [`sql/Restore-EnterpriseInventoryDatabase.ps1`](sql/Restore-EnterpriseInventoryDatabase.ps1) | Yedekten dönüş: yedeği doğrular, onay ister, geri yükler, veritabanının durumunu ve runtime yetkilerini denetler |
 | [`sql/migrate-idempotent.sql`](sql/migrate-idempotent.sql) | Tüm migration'ların idempotent betiği. Uygulanmış migration'ları atlar, tekrar çalıştırılabilir. |
 | [`sql/backup-before-migration.sql`](sql/backup-before-migration.sql) | Yayından hemen önce `COPY_ONLY` tam yedek ve `RESTORE VERIFYONLY` |
-| [`sql/restore-from-backup.sql`](sql/restore-from-backup.sql) | Veritabanını o yedeğe geri döndürür |
+| [`sql/restore-from-backup.sql`](sql/restore-from-backup.sql) | Veritabanını o yedeğe geri döndürür; önce dosyanın bu veritabanının bu sunucuda alınmış yedeği olduğunu (msdb geçmişi) ve sağlam olduğunu (`RESTORE VERIFYONLY`) denetler, ancak sonra bağlantıları kapatır |
+| [`sql/verify-runtime-permissions.sql`](sql/verify-runtime-permissions.sql) | Runtime hesabının yetkilerini onun gözünden denetler; bir yetki fazla veya eksikse hata verir. Hiçbir şeyi değiştirmez |
+| [`../scripts/sql/grant-runtime-permissions.sql`](../scripts/sql/grant-runtime-permissions.sql) | Runtime hesabına `ei_app_runtime` rolünü ve en az yetkiyi verir |
+
+Yayını yapan hesap (DBA veya migration hesabı) veritabanında `db_owner`'dır; uygulamanın runtime hesabı şemayı
+değiştiremez, kayıt silemez, audit kayıtlarını değiştiremez ve migration geçmişine yazamaz. İkisi aynı hesap olamaz;
+yayın betiği bunu denetler. PowerShell betikleri sqlcmd'yi her zaman şifreli bağlantı (`-Nm`) ve sertifika
+doğrulamasıyla çağırır; sqlcmd değişkenleri betiğe metin olarak yerleştiği için veritabanı, hesap ve dosya adları dar
+bir karakter kümesiyle sınırlıdır.
 
 ## Yayın adımları
 
+Depo, yayınlanan sürümün commit'inde olmalıdır (yayın klasöründeki `release.json`).
+
 1. IIS uygulama havuzunu durdurun (yayın sırasında yazma olmasın).
-2. Yedek alın ve doğrulayın; betik `RESTORE VERIFYONLY` hata verirse yayına devam etmeyin:
+2. Yayın betiğini önce `-WhatIf` ile, sonra onsuz çalıştırın. Bekleyen migration varsa yedek alır ve doğrular,
+   migration'ları uygular, hepsinin uygulandığını denetler; ardından runtime yetkilerini verir ve denetler:
+
+   ```powershell
+   .\deploy\sql\Update-EnterpriseInventoryDatabase.ps1 -SqlServer <sql sunucusu> -DatabaseName <veritabanı> `
+       -BackupDirectory '<SQL Server makinesindeki yedek klasörü>' -RuntimeUser '<DOMAIN>\<gmsa>$' -WhatIf
+   ```
+
+   Çıktıdaki her satır `PASS`, `BİLGİ` veya `HATA`'dır; `HATA` varsa betik durur, çıkış kodu 1'dir ve yayına devam
+   edilmez. Veritabanında bu sürümün bilmediği bir migration varsa (yanlış commit) hiçbir şey yapmadan durur.
+3. Yeni sürümü yayınlayıp uygulama havuzunu başlatın. `/api/health/ready` `Healthy` dönmelidir; bekleyen migration
+   varsa `Unhealthy` döner.
+
+Betiği çalıştırmak mümkün değilse aynı adımlar elle yapılır:
+
+1. Yedek alın ve doğrulayın; betik `RESTORE VERIFYONLY` hata verirse yayına devam etmeyin:
 
    ```bash
    sqlcmd -S <sunucu> -E -I -b -v DatabaseName="<veritabanı>" BackupFile="<yedek klasörü>\<veritabanı>_<tarih>.bak" -i deploy/sql/backup-before-migration.sql
    ```
 
-3. Betiği DBA inceler ve migration hesabıyla çalıştırır (`-I`: filtreli indeksler için `QUOTED_IDENTIFIER ON`;
+2. Betiği DBA inceler ve migration hesabıyla çalıştırır (`-I`: filtreli indeksler için `QUOTED_IDENTIFIER ON`;
    `-b`: ilk hatada durur, yarım kalan migration'ın transaction'ı geri alınır):
 
    ```bash
    sqlcmd -S <sunucu> -d <veritabanı> -E -I -b -i deploy/sql/migrate-idempotent.sql
    ```
 
-4. Yeni sürümü yayınlayıp uygulama havuzunu başlatın. `/api/health/ready` `Healthy` dönmelidir; bekleyen migration
-   varsa `Unhealthy` döner.
+3. Runtime yetkilerini verip denetleyin:
+
+   ```bash
+   sqlcmd -S <sunucu> -d <veritabanı> -E -I -b -v RuntimeUser="<DOMAIN\hesap>" -i scripts/sql/grant-runtime-permissions.sql
+   sqlcmd -S <sunucu> -d <veritabanı> -E -I -b -v RuntimeUser="<DOMAIN\hesap>" -i deploy/sql/verify-runtime-permissions.sql
+   ```
 
 ## Geri dönüş seçenekleri
 
 | Durum | Yol | Veri kaybı |
 | --- | --- | --- |
 | Betik hata verdi | Bir şey yapmayın: hatalı migration'ın transaction'ı geri alınır, önceki migration'lar uygulanmış kalır. Hatayı giderip betiği yeniden çalıştırın. | Yok |
-| Yayın sonrası sorun, kimse yazmadı | Yedekten dönün (`restore-from-backup.sql`), önceki uygulama sürümünü yayınlayın. | Yok |
+| Yayın sonrası sorun, kimse yazmadı | Yedekten dönün (aşağıda), önceki uygulama sürümünü yayınlayın. | Yok |
 | Yayın sonrası sorun, yeni veri yazıldı | Önce ileri düzeltme (yeni sürüm veya yeni migration) düşünün. Geri dönmek zorunluysa aşağıdaki tablodan migration bazında geri alın. | Tabloya bakın |
 | Veritabanı bozuldu, migration'la düzelmiyor | Yedekten dönün. | Yedekten sonra yazılan her şey |
 
 Yedekten dönüş, yedekten sonra yazılan **her şeyi** (demirbaş değişiklikleri, oturumlar, audit kayıtları) siler.
 Bu yüzden yazma başladıktan sonra yalnızca son çare olarak kullanılır ve öncesinde kaybolacak kayıtlar dışa aktarılır.
+
+## Yedekten dönüş
+
+1. IIS uygulama havuzunu durdurun ve saklanması gereken kayıtları dışa aktarın.
+2. Yayın betiğinin yazdığı yedek dosyasıyla geri yükleyin. Betik dosyayı msdb yedek geçmişinde arar ve bilgisini
+   yazar, onay ister, `restore-from-backup.sql`'i çalıştırır; sonra veritabanının `ONLINE` ve `MULTI_USER` olduğunu,
+   uygulanmış migration'ları ve runtime yetkilerini denetler:
+
+   ```powershell
+   .\deploy\sql\Restore-EnterpriseInventoryDatabase.ps1 -SqlServer <sql sunucusu> -DatabaseName <veritabanı> `
+       -BackupFile '<yedek klasörü>\<veritabanı>_<tarih>_migration-oncesi.bak' -RuntimeUser '<DOMAIN>\<gmsa>$'
+   ```
+
+   Dosya bu sunucuda bu veritabanının tam yedeği olarak kayıtlı değilse (başka veritabanının yedeği, yanlış yol,
+   silinmiş dosya) veya `RESTORE VERIFYONLY` hata verirse, kimsenin bağlantısı kesilmeden durur.
+3. Betiğin yazdığı son migration'a uyan önceki uygulama sürümünü yayınlayın
+   ([IIS geri dönüş](iis/README.md#geri-dönüş)); `/api/health/ready` `Healthy` dönmelidir. Yeni sürüm eski şemayla
+   `Unhealthy` döner.
+
+Geri yükleme yarıda kalırsa (ör. disk doldu) veritabanı `SINGLE_USER` veya `RESTORING` durumunda kalabilir; bu durum
+denenmedi. DBA nedeni giderip geri yüklemeyi `RESTORE DATABASE ... WITH REPLACE, CHECKSUM` ile elle tamamlar ve
+`ALTER DATABASE ... SET MULTI_USER` çalıştırır; ardından betiğin 3. adımındaki denetimler elle yapılır.
 
 ## Migration bazında geri alma
 
@@ -65,6 +118,8 @@ yapılır.
 
 ## Denenenler
 
+### Önceki günler
+
 Test SQL Server'ında (SQL Server 2022 container, `Turkish_CI_AS`):
 
 - `migrate-idempotent.sql` boş veritabanına iki kez uygulandı; ikinci çalıştırma bir şey değiştirmedi, filtreli
@@ -80,5 +135,37 @@ Test SQL Server'ında (SQL Server 2022 container, `Turkish_CI_AS`):
   gitti, veritabanı yeniden `MULTI_USER`). `dotnet ef migrations script AddUserSessions AddSignInAuditActions` ile
   üretilen geri alma betiği `UserSessions`'ı sildi; ardından `migrate-idempotent.sql` onu yeniden oluşturdu.
 
-Şirketin SQL Server'ında, gerçek yedek klasörü ve hesaplarla henüz denenmedi; ilk yayından önce DBA ile aynı tatbikat
-yapılmalıdır.
+### 39. gün
+
+Otomatik testler (test SQL Server'ı, her test kendi veritabanında):
+
+- `DatabaseRecoveryTests.Restoring_the_backup_taken_before_a_migration_brings_back_its_schema_and_data`: bir önceki
+  migration'a kadar kurulmuş, demirbaş ve audit kaydı olan veritabanının `backup-before-migration.sql` ile yedeği
+  alınır; migration uygulanır, yeni demirbaş eklenir ve eskisi güncellenir; `restore-from-backup.sql` ile geri
+  dönülür. Sonuç: aynı satırlar ve aynı `RowVersion`, tek audit kaydı, `ONLINE` ve `MULTI_USER`, yedekteki migration
+  listesi. Ardından migration yeniden uygulanır.
+- `DatabaseRecoveryTests.A_backup_of_another_database_or_a_missing_file_is_refused_before_anyone_is_disconnected`:
+  başka veritabanının yedeği ve olmayan dosya reddedilir, veritabanı `MULTI_USER` kalır.
+- `RuntimePermissionTests`: commit'teki yetki betiğinden sonra `verify-runtime-permissions.sql` geçer; runtime hesabı
+  olarak tablo oluşturma, kolon ekleme, tablo silme, `TRUNCATE`, demirbaş silme, audit güncelleme veya silme,
+  migration geçmişine yazma, kullanıcı oluşturma ve yetki verme reddedilir ve hiçbir şey değişmez. Hesaba
+  `db_datawriter` verilince denetim hata verir. Uygulama yalnızca runtime yetkileriyle ve kendi SQL login'iyle açılır;
+  giriş, marka ekleme, demirbaş ekleme/güncelleme/zimmet/iade/arşiv, audit, rapor ve çıkış çalışır.
+
+Elle tatbikat (Linux'ta PowerShell 7.6 ve go-sqlcmd 1.8; yayın hesabı `sa`, runtime hesabı ayrı bir SQL login'i;
+bağlantı şifreli ve sertifika test CA'sıyla doğrulandı; uygulama 38. günün yayın paketiyle çalıştı):
+
+1. `Update-EnterpriseInventoryDatabase.ps1 -WhatIf` boş veritabanında 4 bekleyen migration'ı yazdı, bir şey
+   değiştirmedi. Onsuz çalıştırma yedek aldı, 4 migration'ı uyguladı, runtime yetkilerini verip 68 denetimle doğruladı.
+   Uygulama açıldı ve bir demirbaş eklendi.
+2. `AddReportingIndexes` EF geri alma betiğiyle geri alındı; uygulama `/api/health/ready` için `Unhealthy` (503) döndü.
+   Yayın betiği 1 bekleyen migration için yeni yedek aldı ve uyguladı; `Healthy`, ikinci demirbaş eklendi.
+3. Bu yedek başka bir veritabanına geri yüklenmek istendi: reddedildi (çıkış kodu 1). Uygulama durdurulup
+   `Restore-EnterpriseInventoryDatabase.ps1` ile asıl veritabanına geri yüklendi: `ONLINE MULTI_USER`, 3 migration,
+   runtime yetkileri doğru. Yeni sürüm bu şemayla `Unhealthy` döndü; yayın betiği yeniden çalışınca `Healthy` oldu ve
+   yalnızca yedekten önceki demirbaş kaldı.
+4. Runtime hesabıyla `migrate-idempotent.sql` çalıştırıldı: SQL Server reddetti (Msg 1088), veritabanı değişmedi.
+   Yayın betiği runtime hesabıyla "Yayın, runtime hesabıyla yapılamaz" diyerek durdu.
+
+Denenmeyenler: Windows'ta ODBC sqlcmd 18 ve Windows PowerShell 5.1, Windows kimlik doğrulamasıyla (gMSA) SQL bağlantısı,
+şirketin SQL Server'ı, gerçek yedek klasörü ve hesaplar. İlk yayından önce DBA ile aynı tatbikat yapılmalıdır.

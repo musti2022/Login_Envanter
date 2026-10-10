@@ -118,8 +118,9 @@ başlarken AD ayarlarını denetler; eksik veya hatalı değerle başlamaz.
 ## Güncelleme
 
 1. Yeni yayın klasörünü hazırlayıp sunucuya kopyalayın (yukarıdaki 2. adım); önceki klasörü silmeyin.
-2. Yeni migration varsa: uygulama havuzunu durdurun, yedek alın, migration'ı uygulayın
-   ([`../database-rollback.md`](../database-rollback.md)).
+2. Uygulama havuzunu durdurun ve veritabanını yeni sürüme getirin:
+   [`../sql/Update-EnterpriseInventoryDatabase.ps1`](../sql/Update-EnterpriseInventoryDatabase.ps1) bekleyen migration
+   varsa yedek alır, uygular ve runtime yetkilerini denetler ([`../database-rollback.md`](../database-rollback.md#yayın-adımları)).
 3. `Install-EnterpriseInventorySite.ps1`'i yeni `-PhysicalPath` ile ve **aynı** `-HostName`, `-CertificateThumbprint`,
    `-GroupManagedServiceAccount` ile çalıştırın. `-Settings` ve `-DirectoryServiceAccount` verilmezse kayıtlı ayarlar
    değişmez. Havuz bir gMSA ile çalışırken `-GroupManagedServiceAccount` unutulursa betik durur.
@@ -130,15 +131,30 @@ başlarken AD ayarlarını denetler; eksik veya hatalı değerle başlamaz.
 - **Yalnızca uygulama:** `Install-EnterpriseInventorySite.ps1 -PhysicalPath <önceki klasör> ...` (aynı parametrelerle)
   siteyi önceki klasöre döndürür ve havuzu yeniden başlatır. Veritabanı değişmediyse yeterlidir.
 - **Migration uygulandıysa:** [`../database-rollback.md`](../database-rollback.md#geri-dönüş-seçenekleri)'deki tabloya
-  göre önce veritabanı, sonra uygulama geri alınır. Eski uygulama yeni şemayla çalıştırılmaz.
+  göre önce veritabanı ([`../sql/Restore-EnterpriseInventoryDatabase.ps1`](../sql/Restore-EnterpriseInventoryDatabase.ps1)
+  ile yayından önceki yedeğe), sonra uygulama geri alınır. Eski uygulama yeni şemayla çalıştırılmaz.
 
 ## Data Protection anahtarları
 
 Oturum çerezleri ve CSRF token'ları bu anahtarlarla korunur. Anahtarlar site klasörünün dışında tutulur, böylece
 yayınlar ve havuzun yeniden başlaması oturumları düşürmez. Windows'ta anahtar dosyaları ayrıca makine düzeyinde DPAPI
 ile şifrelenir; bu yüzden yalnızca bu sunucuda çözülebilir. Sunucu değişirse anahtarlar taşınamaz, kullanıcılar
-yeniden giriş yapar. Klasör yoksa veya yazılamıyorsa uygulama başlamaz (test edildi, bkz.
-[`docs/session-security.md`](../../docs/session-security.md)).
+yeniden giriş yapar.
+
+- **Klasörü kurulum betiği oluşturur** ve yalnızca uygulama havuzu kimliğine ve yöneticilere açar. Development dışında
+  uygulama klasörü kendisi oluşturmaz: klasör yoksa (ör. yol yanlış yazıldı) başlamaz ve nedeni loga yazar. Aksi halde
+  üst klasörün izinleriyle yeni bir klasör ve yeni anahtarlar oluşur, herkesin oturumu sessizce düşerdi
+  (`ApiPipelineTests.A_keys_folder_that_does_not_exist_stops_the_application_instead_of_being_created`).
+- **Yedek:** klasör sunucu yedeğine dahil edilir. Kaybolursa yalnızca açık oturumlar düşer (kullanıcılar yeniden giriş
+  yapar); veri kaybolmaz. Aynı sunucuya geri kopyalanan klasör oturumları geri getirir. DPAPI nedeniyle yedek başka
+  sunucuda işe yaramaz.
+- **Geri yükleme:** havuzu durdurun, klasörün içeriğini yedekten kopyalayın (yeni oluşan anahtarlar da kalabilir),
+  izinleri denetleyin ve havuzu başlatın.
+
+39. günde denendi (yayın klasörü, Production, Linux; DPAPI yok): giriş yapılmış bir oturum uygulama yeniden başlayınca
+sürdü; anahtar klasörü boşaltılınca aynı çerez `401` aldı; klasörün kopyası geri konunca aynı çerez yeniden `200`
+aldı; klasör silinince uygulama "does not exist" hatasıyla başlamadı ve klasörü oluşturmadı. Aynısı otomatik testtedir
+(`SessionSecurityTests.A_copy_of_the_key_folder_brings_the_sessions_back_and_new_keys_do_not`).
 
 ## Loglar
 
@@ -191,6 +207,7 @@ denemesi (sayfa adreslerine doğrudan açılış, `wss` bağlantısı, CSP ihlal
 - `Install-EnterpriseInventorySite.ps1` hiç çalıştırılmadı; `Test-ServerPrerequisites.ps1`'in IIS, sertifika deposu
   ve klasör izni denetimleri çalıştırılmadı. İkisi de yalnızca PowerShell 7.6 ile sözdizimi açısından denetlendi.
 - Windows PowerShell 5.1 (betikler 5.1 uyumlu yazıldı ama 5.1 ile çalıştırılmadı).
-- DPAPI ile anahtar şifreleme, gMSA, SQL Server'a Windows kimlik doğrulaması.
+- DPAPI ile anahtar şifreleme ve DPAPI ile şifrelenmiş anahtarların yedekten geri yüklenmesi, gMSA, SQL Server'a
+  Windows kimlik doğrulaması, Windows'ta ODBC sqlcmd 18 ile veritabanı betikleri.
 - Şirketin AD'si, SQL Server'ı, sertifikası ve CA'sı. Testte AD sertifika iptal kontrolü kapalıydı (Samba test CA'sının
   CRL'i yok); üretimde açıktır ve açık kalmalıdır.

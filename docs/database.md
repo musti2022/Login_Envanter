@@ -79,11 +79,20 @@ CREATE DATABASE [<veritabanı>] COLLATE Turkish_CI_AS;
 
 | Hesap | Kullanım | Yetki |
 | --- | --- | --- |
-| Migration | Yalnızca yayın sırasında şemayı günceller | `db_ddladmin` + `db_datareader` + `db_datawriter` (veya betiği DBA çalıştırır) |
-| Runtime | Uygulama (`ConnectionStrings:DefaultConnection`) | `ei_app_runtime` rolü: `SELECT`, `INSERT`, `UPDATE`; `DELETE` ve şema değişikliği yok; `AuditLogs` yalnızca eklenir |
+| Yayın (migration) | Yalnızca yayın sırasında: yedek, şema güncellemesi, runtime yetkileri | Veritabanında `db_owner` (veya betikleri DBA çalıştırır) |
+| Runtime | Uygulama (`ConnectionStrings:DefaultConnection`) | `ei_app_runtime` rolü: `SELECT`, `INSERT`, `UPDATE`; `DELETE` ve şema değişikliği yok; `AuditLogs` yalnızca eklenir; `__EFMigrationsHistory` yalnızca okunur |
 
 Runtime yetkileri [`scripts/sql/grant-runtime-permissions.sql`](../scripts/sql/grant-runtime-permissions.sql)
-ile verilir. Uygulama başlarken migration çalıştırmaz.
+ile verilir ve [`deploy/sql/verify-runtime-permissions.sql`](../deploy/sql/verify-runtime-permissions.sql) ile
+denetlenir: betik runtime hesabının gözünden veritabanı yetkilerini (tablo/prosedür oluşturma, şema, kullanıcı ve rol
+değiştirme) ve her tablo için `SELECT`/`INSERT`/`UPDATE`/`DELETE`/`ALTER`'ı beklenenle karşılaştırır, bir fark varsa
+hata verir. Yayın betiği ([`deploy/sql/Update-EnterpriseInventoryDatabase.ps1`](../deploy/sql/Update-EnterpriseInventoryDatabase.ps1))
+ikisini her yayında çalıştırır ve runtime hesabıyla yayın yapmayı reddeder. Uygulama başlarken migration çalıştırmaz.
+
+`RuntimePermissionTests` bunu SQL Server'da dener: denetim geçer; runtime hesabı olarak şema değişikliği, silme, audit
+değiştirme, migration geçmişine yazma ve yetki verme reddedilir; hesaba `db_datawriter` verilince denetim hata verir;
+uygulama yalnızca runtime yetkileriyle bütün iş akışlarını (giriş, tanım, demirbaş, zimmet, iade, arşiv, audit, rapor)
+çalıştırır.
 
 ## Migration komutları
 

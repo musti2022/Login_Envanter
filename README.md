@@ -4,7 +4,7 @@
 üzerinden LDAPS ile yapılır ve yalnızca `Bim_Envanter` güvenlik grubunun üyeleri uygulamaya girebilir.
 Proje gereksinimleri ve 40 günlük plan: [`proje_talimatlari.md`](proje_talimatlari.md).
 
-> **Durum:** 38. gün — solution iskeleti, Türkçe arayüz kabuğu,
+> **Durum:** 39. gün — solution iskeleti, Türkçe arayüz kabuğu,
 > domain modeli, SQL Server şeması (EF Core migration, RowVersion, kısıtlar, soft delete sorgu filtresi, idempotent
 > yayın betiği, yedek ve geri dönüş planı, geliştirme seed'i), API altyapısı (health endpoint'leri, varsayılan olarak kapalı yetkilendirme, hata yanıtları,
 > güvenlik başlıkları, rate limiting), Active Directory LDAPS bağlantısı (sıkı TLS sertifika doğrulaması), giriş API'si
@@ -30,7 +30,10 @@ Proje gereksinimleri ve 40 günlük plan: [`proje_talimatlari.md`](proje_talimat
 > bağımlılık taraması), güvenlik kontrol listesi ve gerçek sonuçlarla test raporu (kısıt, eşzamanlılık, geri alma ve
 > audit testleri tek tek), IIS yayın hazırlığı (React ve API'nin aynı adresten sunulması, sayfa CSP'si, `web.config`,
 > yayın klasörü, sunucu ön kontrolü, site kurulumu ve duman testi betikleri; yayın klasörü Production'da HTTPS ile
-> denendi, IIS'in kendisi denenmedi: [`deploy/iis/README.md`](deploy/iis/README.md)). AD entegrasyonu Samba test domain'i ile test
+> denendi, IIS'in kendisi denenmedi: [`deploy/iis/README.md`](deploy/iis/README.md)), veritabanı yayın ve geri dönüş
+> betikleri (yedek, migration, runtime yetkilerinin verilmesi ve denetlenmesi, yedekten dönüş; test SQL Server'ında
+> tatbikatla denendi: [`deploy/database-rollback.md`](deploy/database-rollback.md)) ve Data Protection anahtar
+> klasörünün yedeği (denendi; Windows'taki DPAPI denenmedi). AD entegrasyonu Samba test domain'i ile test
 > edildi; şirketin gerçek AD'si ile henüz denenmedi. Tanım yönetimi (ad değiştirme, pasifleştirme) henüz yok.
 
 ## Teknolojiler

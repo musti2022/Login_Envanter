@@ -200,6 +200,19 @@ public class ApiPipelineTests
     }
 
     [Fact]
+    public async Task A_keys_folder_that_does_not_exist_stops_the_application_instead_of_being_created()
+    {
+        // Found on day 39: the folder used to be created on the fly, with its parent's permissions and new keys.
+        var missing = Path.Combine(Path.GetTempPath(), $"ei-keys-missing-{Guid.NewGuid():N}");
+        await using var api = new TestApiFactory(environment: "Production", settings: new Dictionary<string, string?> { ["DataProtection:KeysDirectory"] = missing });
+
+        var error = Assert.Throws<OptionsValidationException>(() => api.CreateAnonymousClient());
+
+        Assert.Contains("does not exist", error.Message, StringComparison.Ordinal);
+        Assert.False(Directory.Exists(missing));
+    }
+
+    [Fact]
     public async Task Only_the_health_probes_csrf_token_and_sign_in_allow_anonymous_access()
     {
         await using var api = new TestApiFactory();
