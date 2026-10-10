@@ -4,7 +4,8 @@
 üzerinden LDAPS ile yapılır ve yalnızca `Bim_Envanter` güvenlik grubunun üyeleri uygulamaya girebilir.
 Proje gereksinimleri ve 40 günlük plan: [`proje_talimatlari.md`](proje_talimatlari.md).
 
-> **Durum:** 39. gün — solution iskeleti, Türkçe arayüz kabuğu,
+> **Durum:** 40. gün, kabul ve teslim: 40 günlük plan test ortamında tamamlandı; kabul sonuçları ve şirket ortamında
+> yapılmadan üretime geçilmeyecek işler [`docs/acceptance.md`](docs/acceptance.md)'dedir. Yapılanlar: solution iskeleti, Türkçe arayüz kabuğu,
 > domain modeli, SQL Server şeması (EF Core migration, RowVersion, kısıtlar, soft delete sorgu filtresi, idempotent
 > yayın betiği, yedek ve geri dönüş planı, geliştirme seed'i), API altyapısı (health endpoint'leri, varsayılan olarak kapalı yetkilendirme, hata yanıtları,
 > güvenlik başlıkları, rate limiting), Active Directory LDAPS bağlantısı (sıkı TLS sertifika doğrulaması), giriş API'si
@@ -13,7 +14,9 @@ Proje gereksinimleri ve 40 günlük plan: [`proje_talimatlari.md`](proje_talimat
 > Data Protection anahtarları), Türkçe giriş ekranı ile korumalı sayfalar, demirbaş API'si (listeleme, arama,
 > filtre, sıralama, sayfalama, detay, ekleme, RowVersion ile güncelleme ve `409` çakışma uyarısı, arşivleme, audit
 > geçmişi), tanım listeleri API'si (marka, model, şehir, lokasyon, departman) ve envanter ekranları (gösterge paneli,
-> tablo, arama ve filtreler, ekleme/düzenleme formu, detay, geçmiş, arşivleme, telefon görünümü), AD'de çalışan
+> tablo, arama ve filtreler, ekleme/düzenleme formu, detay, geçmiş, arşivleme, telefon görünümü), tanım yönetimi
+> (Lokasyonlar ile Marka ve Modeller ekranlarında ekleme, ad değiştirme ve pasifleştirme; RowVersion, `409` ve audit ile),
+> Zimmetler ekranı (şu an zimmetli demirbaşlar), AD'de çalışan
 > araması, zimmet API'si (tek transaction'da zimmet verme ve iade, filtreli benzersiz indeksle tek aktif zimmet,
 > zimmet geçmişi), detay sayfasında zimmet ver/iade al ve konum değiştirme (doğrulamalı, RowVersion ve audit ile)
 > ekranları, yalnızca oturumlu yöneticilere açık SignalR hub'ı (CSRF ve origin kontrolü, oturum bitince bağlantının
@@ -34,7 +37,7 @@ Proje gereksinimleri ve 40 günlük plan: [`proje_talimatlari.md`](proje_talimat
 > betikleri (yedek, migration, runtime yetkilerinin verilmesi ve denetlenmesi, yedekten dönüş; test SQL Server'ında
 > tatbikatla denendi: [`deploy/database-rollback.md`](deploy/database-rollback.md)) ve Data Protection anahtar
 > klasörünün yedeği (denendi; Windows'taki DPAPI denenmedi). AD entegrasyonu Samba test domain'i ile test
-> edildi; şirketin gerçek AD'si ile henüz denenmedi. Tanım yönetimi (ad değiştirme, pasifleştirme) henüz yok.
+> edildi; şirketin gerçek AD'si, SQL Server'ı, IIS sunucusu ve Microsoft Excel ile henüz denenmedi.
 
 ## Teknolojiler
 
@@ -79,7 +82,8 @@ Geçmişi ekranı için [`docs/audit.md`](docs/audit.md); Excel'e aktarma için 
 filtreler, form ve detay ekranları için [`docs/inventory-ui.md`](docs/inventory-ui.md); temsili yükte sorgu ölçümleri,
 yapılan iyileştirmeler ve N+1 testi için [`docs/performance.md`](docs/performance.md); her güvenlik kontrolü, kanıtı ve
 yayın öncesi ortamda doğrulanacaklar için [`docs/security-checklist.md`](docs/security-checklist.md); son test
-çalıştırmasının sonuçları ve denenmeyenler için [`docs/test-report.md`](docs/test-report.md).
+çalıştırmasının sonuçları ve denenmeyenler için [`docs/test-report.md`](docs/test-report.md); 40. gün kabulü, her
+gereksinimin kanıtı ve şirket ortamında yapılacaklar için [`docs/acceptance.md`](docs/acceptance.md).
 
 ## Gereksinimler
 
