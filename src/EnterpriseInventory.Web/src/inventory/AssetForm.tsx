@@ -16,7 +16,7 @@ import {
   type AssetFormField,
   type AssetFormInput,
   type AssetFormValues,
-} from './assetForm'
+} from './assetFormSchema'
 import type { AssetDetails, SaveAssetBody } from './assetsApi'
 import { assetTypes, statusLabels, typeLabels, type AssetStatus } from './labels'
 import { brandsQuery, citiesQuery, departmentsQuery, locationsQuery, lookupChoices as choices, modelsQuery, type LookupItem, type LookupOption as Option } from './lookupsApi'
